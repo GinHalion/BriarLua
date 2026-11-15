@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<resources>
+    <declare-styleable name="Theme">
+        <attr name="materialSwitchBarStyle" format="reference" />
+    </declare-styleable>
+
+    <declare-styleable name="FloatingActionButton">
+        <attr name="backgroundTint" />
+    </declare-styleable>
+
+    <declare-styleable name="ExtendedFloatingActionButton">
+        <attr name="android:text" />
+        <attr
+            name="icon"
+            format="reference" />
+        <attr name="backgroundTint" />
+    </declare-styleable>
+
+    <declare-styleable name="MaterialTextField">
+        <attr name="android:hint" />
+        <attr name="android:singleLine" />
+        <attr name="textSize" />
+        <attr name="boxCornerRadii" />
+        <attr name="endIconMode" />
+    </declare-styleable>
+
+    <declare-styleable name="MaterialHeroButton">
+        <attr name="android:text" />
+        <attr name="android:textSize" />
+        <attr name="icon" />
+        <attr name="color" />
+        <attr name="rippleColor" />
+        <attr name="android:textColor" />
+    </declare-styleable>
+
+    <declare-styleable name="MaterialSwitchBar">
+        <attr name="android:text" />
+        <attr name="android:textColor" />
+        <attr name="android:textAppearance" />
+        <attr name="android:paddingTop" />
+        <attr name="android:paddingBottom" />
+        <attr name="android:paddingStart" />
+        <attr name="android:paddingEnd" />
+        <attr name="shapeAppearance" />
+        <attr name="backgroundTint" format="color" />
+        <attr name="circleRevealEnabled" format="boolean" />
+    </declare-styleable>
+
+        <declare-styleable name="SimpleMenuPreference">
+        <attr name="android:popupMenuStyle" />
+        <attr name="android:popupTheme" />
+        <attr name="popupBackgroundRadius" format="dimension" />
+    </declare-styleable>
+
+    <declare-styleable name="SimpleMenuPopupWindow">
+        <attr name="listMarginHorizontal" format="dimension" />
+        <attr name="listMarginVertical" format="dimension" />
+        <attr name="listItemPadding" format="dimension" />
+        <attr name="menuElevation" format="dimension" />
+        <attr name="increment" format="dimension" />
+        <attr name="maxIncrements" format="integer" />
+    </declare-styleable>
+
+</resources>
