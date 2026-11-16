@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<lemon.material.menu.ForegroundCheckTextView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@android:id/text1"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/simple_menu_item_background"
+    android:foreground="?android:selectableItemBackground"
+    android:gravity="center_vertical"
+    android:minHeight="48dp"
+    android:paddingTop="8dp"
+    android:paddingBottom="8dp"
+    android:textAppearance="?textAppearanceBody1"
+    tools:ignore="UnusedAttribute" />

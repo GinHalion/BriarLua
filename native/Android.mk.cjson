@@ -1,0 +1,15 @@
+
+LOCAL_PATH := $(call my-dir)
+
+include $(CLEAR_VARS)
+LOCAL_CFLAGS += -std=c99
+LOCAL_C_INCLUDES += $(LOCAL_PATH)/lua
+LOCAL_MODULE := cjson
+LOCAL_SRC_FILES := \
+        cjson/lua_cjson.c \
+        cjson/fpconv.c \
+        cjson/strbuf.c
+LOCAL_LDFLAGS += -L$(LOCAL_PATH)/../app/src/main/jniLibs/$(TARGET_ARCH_ABI)
+LOCAL_LDFLAGS += -lluajava
+LOCAL_LDLIBS += -llog -lm
+include $(BUILD_SHARED_LIBRARY)
