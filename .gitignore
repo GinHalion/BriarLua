@@ -1,0 +1,12 @@
+.gradle/
+# 收窄锚点:不带斜杠的 build/ 会匹配任意深度(含 assets/page/build/ 打包页面),
+# git status/add/checkout 时会误伤;根级与一级子目录构建产物用下面两条覆盖
+/build/
+*/build/
+local.properties
+.idea/
+*.iml
+.cxx/
+captures/
+*.o
+*.keystore

@@ -1,0 +1,88 @@
+local bindClass = luajava.bindClass
+local AppCompatTextView = bindClass "androidx.appcompat.widget.AppCompatTextView"
+local AppCompatImageView = bindClass "androidx.appcompat.widget.AppCompatImageView"
+local LinearLayoutCompat = bindClass "androidx.appcompat.widget.LinearLayoutCompat"
+local MaterialCardView = bindClass "com.google.android.material.card.MaterialCardView"
+
+return {
+  LinearLayoutCompat,
+  layout_width = -1,
+  layout_height = -2,
+  paddingLeft = "12dp",
+  paddingRight = "12dp",
+  padding = "6dp",
+  {
+    MaterialCardView,
+    id = "card",
+    layout_width = -1,
+    layout_height = -2,
+    radius = "16dp",
+    clickable = true,
+    focusable = true,
+    strokeWidth = 0,
+    {
+      LinearLayoutCompat,
+      layout_width = -1,
+      layout_height = -2,
+      orientation = 0,
+      gravity = "center|left",
+      padding = "12dp",
+      {
+        MaterialCardView,
+        layout_width = "46dp",
+        layout_height = "46dp",
+        radius = "12dp",
+        strokeWidth = 0,
+        {
+          AppCompatImageView,
+          id = "icon",
+          layout_width = -1,
+          layout_height = -1,
+          scaleType = "centerCrop",
+        },
+      },
+      {
+        LinearLayoutCompat,
+        layout_width = 0,
+        layout_height = -2,
+        layout_weight = 1,
+        orientation = 1,
+        layout_marginLeft = "12dp",
+        {
+          AppCompatTextView,
+          id = "title",
+          layout_width = -1,
+          layout_height = -2,
+          textSize = "16sp",
+          textColor = MyColor.colorOnBackground,
+          textStyle = "bold",
+          maxLines = 1,
+          ellipsize = "end",
+          text = "未知",
+        },
+        {
+          AppCompatTextView,
+          id = "packageName",
+          layout_width = -1,
+          layout_height = -2,
+          textSize = "13sp",
+          textColor = MyColor.colorOnSurfaceVariant,
+          maxLines = 1,
+          ellipsize = "end",
+          text = "com.example.app",
+        },
+        {
+          AppCompatTextView,
+          id = "meta",
+          layout_width = -1,
+          layout_height = -2,
+          textSize = "12sp",
+          textColor = MyColor.colorOnSurfaceVariant,
+          maxLines = 1,
+          ellipsize = "end",
+          layout_marginTop = "2dp",
+        },
+      },
+    },
+  },
+}

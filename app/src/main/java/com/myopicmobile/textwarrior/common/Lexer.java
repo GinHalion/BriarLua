@@ -1,0 +1,631 @@
+package com.myopicmobile.textwarrior.common;
+
+import android.graphics.Rect;
+import android.util.Log;
+
+import com.androlua.tokenizer.LuaLexer;
+import com.androlua.tokenizer.LuaTokenTypes;
+
+import org.luaj.vm2.compiler.LexState;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+
+public class Lexer {
+    public final static int UNKNOWN = -1;
+    public final static int NORMAL = 0;
+    public final static int KEYWORD = 1;
+    public final static int OPERATOR = 2;
+    public final static int NAME = 3;
+    public final static int LITERAL = 4;
+    public final static int GLOBAL = 5;
+    public final static int UPVAL = 6;
+    public final static int LOCAL = 7;
+    public final static int STRING = 8;
+    public final static int COMMENT = 9;
+
+
+    public final static int SINGLE_SYMBOL_WORD = 10;
+    public final static int SINGLE_SYMBOL_LINE_A = 20;
+    public final static int SINGLE_SYMBOL_LINE_B = 21;
+    public final static int DOUBLE_SYMBOL_LINE = 30;
+    public final static int DOUBLE_SYMBOL_DELIMITED_MULTILINE = 40;
+    public final static int SINGLE_SYMBOL_DELIMITED_A = 50;
+    public final static int SINGLE_SYMBOL_DELIMITED_B = 51;
+    
+    public final static int HEX_COLOR = 52;
+    public final static int HEX_COLOR_HIGH_CONTRAST = 53;
+    
+    
+    private final static int MAX_KEYWORD_LENGTH = 127;
+    private static Language _globalLanguage = LanguageNonProg.getInstance();
+    LexCallback _callback = null;
+    private DocumentProvider _hDoc;
+    private LexThread _workerThread = null;
+
+    public Lexer(LexCallback callback) {
+        _callback = callback;
+    }
+
+    synchronized public static Language getLanguage() {
+        return _globalLanguage;
+    }
+
+    synchronized public static void setLanguage(Language lang) {
+        _globalLanguage = lang;
+    }
+
+    private static boolean isKeyword(LuaTokenTypes t) {
+        switch (t) {
+            case TRUE:
+            case FALSE:
+            case DO:
+            case FUNCTION:
+            case NOT:
+            case AND:
+            case OR:
+            case IF:
+            case THEN:
+            case ELSEIF:
+            case ELSE:
+            case WHILE:
+            case FOR:
+            case IN:
+            case RETURN:
+            case BREAK:
+            case LOCAL:
+            case REPEAT:
+            case UNTIL:
+            case END:
+            case NIL:
+            case SWITCH:
+            case CASE:
+            case DEFAULT:
+            case CONTINUE:
+            case GOTO:
+            case LAMBDA:
+            case DEFER:
+            case WHEN:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    public void tokenize(DocumentProvider hDoc) {
+        LexState.errormsg=null;
+        if (!Lexer.getLanguage().isProgLang()) {
+            return;
+        }
+
+        setDocument(new DocumentProvider(hDoc));
+        cancelTokenize();
+        try {
+            _workerThread = new LexThread(this);
+            _workerThread.start();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    void tokenizeDone(List<Pair> result) {
+        if (_callback != null) {
+            _callback.lexDone(result);
+        }
+        _workerThread = null;
+    }
+
+    public void cancelTokenize() {
+        if (_workerThread != null) {
+            _workerThread.abort();
+            _workerThread = null;
+        }
+    }
+
+    public synchronized DocumentProvider getDocument() {
+        return _hDoc;
+    }
+
+    public synchronized void setDocument(DocumentProvider hDoc) {
+        _hDoc = hDoc;
+    }
+
+    public interface LexCallback {
+        public void lexDone(List<Pair> results);
+    }
+
+    private static ArrayList<Rect> mLines = new ArrayList<>();
+
+    public static ArrayList<Rect> getLines() {
+        return mLines;
+    }
+
+    private class LexThread extends Thread {
+        private final Lexer _lexManager;
+        private final Flag _abort;
+        private boolean rescan = false;
+        private int max = 2 ^ 18;
+        private ArrayList<Pair> _tokens;
+
+        public LexThread(Lexer p) {
+            _lexManager = p;
+            _abort = new Flag();
+            _tokens = new ArrayList<>();
+            _tokens.add(new Pair(_hDoc.length(), Lexer.NORMAL));
+        }
+
+        @Override
+        public void run() {
+            do {
+                rescan = false;
+                _abort.clear();
+                try {
+                    if (Lexer.getLanguage() instanceof LanguageLua)
+                        tokenize();
+                    else
+                        tokenize2();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    _tokens = new ArrayList<>();
+                    rescan = false;
+                }
+            }
+            while (rescan);
+
+            if (!_abort.isSet()) {
+                _lexManager.tokenizeDone(_tokens);
+            }
+        }
+
+        public void restart() {
+            rescan = true;
+            _abort.set();
+        }
+
+        public void abort() {
+            _abort.set();
+        }
+
+
+        private void tokenize() {
+            DocumentProvider hDoc = getDocument();
+            int rowCount = hDoc.getRowCount();
+            int maxRow = 9999;
+            ArrayList<Pair> tokens = new ArrayList<Pair>(8196);
+            ArrayList<Rect> lines = new ArrayList<>(8196);
+            ArrayList<Rect> lineStacks = new ArrayList<>(8196);
+            ArrayList<Rect> lineStacks2 = new ArrayList<>(8196);
+            if (rowCount*5 < maxRow){
+                if(!LuaParser.lexer(new DocumentProvider(hDoc),_abort)&&_tokens!=null&&_tokens.size()>4) {
+                    _abort.set();
+                    return;
+                }
+            }else {
+                LuaParser.reset();
+            }
+            HashMap<String, ArrayList<Pair>> locals = LuaParser.getLocalMap();
+            HashMap<String, ArrayList<Pair>> values = LuaParser.getValueMap();
+
+            LuaLexer lexer = new LuaLexer(hDoc);
+            Language language = Lexer.getLanguage();
+            language.clearUserWord();
+            LuaParser.clearUserWord();
+            try {
+                int idx = 0;
+
+                LuaTokenTypes lastType = null;
+                LuaTokenTypes lastType2 = null;
+                LuaTokenTypes lastType3 = null;
+
+                String lastName = "";
+                Pair lastPair = null;
+                int lastLen = 0;
+                StringBuilder bul = new StringBuilder();
+                boolean isModule = false;
+                boolean hasDo = true;
+                int lastNameIdx = -1;
+                while (!_abort.isSet()) {
+                    Pair pair = null;
+                    LuaTokenTypes type = lexer.advance();
+                    if (type == null)
+                        break;
+                    int len = lexer.yylength();
+                    idx += len;
+                    if (isModule && lastType == LuaTokenTypes.STRING && type != LuaTokenTypes.STRING) {
+                        String mod = bul.toString();
+                        if (bul.length() > 2) {
+                            String m = mod.substring(1, mod.length() - 1);
+                            String[] ms = m.split("\\.|\\$");
+                            String na = ms[ms.length - 1];
+                            language.addUserWord(na);
+                            LuaParser.addUserWord(na + " :import");
+                        }
+                        bul = new StringBuilder();
+                        isModule = false;
+                    }
+
+                    lastLen = len;
+                    switch (type) {
+                        case DO:
+                            if (lastType == LuaTokenTypes.DOT) {
+                                tokens.add(new Pair(len, NORMAL));
+                                break;
+                            }
+                            if (hasDo) {
+                                lineStacks.add(new Rect(lexer.yychar(), lexer.yyline(), 0, lexer.yyline()));
+                            }
+                            hasDo = true;
+                            tokens.add(new Pair(len, KEYWORD));
+                            break;
+                        case WHILE:
+                        case FOR:
+                            if (lastType == LuaTokenTypes.DOT) {
+                                tokens.add(new Pair(len, NORMAL));
+                                break;
+                            }
+                            hasDo = false;
+                            lineStacks.add(new Rect(lexer.yychar(), lexer.yyline(), 0, lexer.yyline()));
+                            tokens.add(new Pair(len, KEYWORD));
+                            break;
+                        case FUNCTION:
+                        case IF:
+                        case SWITCH:
+                        case WHEN:
+                            if (lastType == LuaTokenTypes.DOT) {
+                                tokens.add(new Pair(len, NORMAL));
+                                break;
+                            }
+                            lineStacks.add(new Rect(lexer.yychar(), lexer.yyline(), 0, lexer.yyline()));
+                            tokens.add(new Pair(len, KEYWORD));
+                            break;
+                        case END:
+                            if (lastType == LuaTokenTypes.DOT) {
+                                tokens.add(new Pair(len, NORMAL));
+                                break;
+                            }
+                            int size = lineStacks.size();
+                            if (size > 0) {
+                                Rect rect = lineStacks.remove(size - 1);
+                                rect.bottom = lexer.yyline();
+                                rect.right = lexer.yychar();
+                                if (rect.bottom - rect.top > 1)
+                                    lines.add(rect);
+                            }
+                            tokens.add(new Pair(len, KEYWORD));
+                            hasDo = true;
+                            break;
+                        case TRUE:
+                        case FALSE:
+                        case NOT:
+                        case AND:
+                        case OR:
+                        case THEN:
+                        case ELSEIF:
+                        case ELSE:
+                        case IN:
+                        case RETURN:
+                        case BREAK:
+                        case LOCAL:
+                        case REPEAT:
+                        case UNTIL:
+                        case NIL:
+
+                        case CASE:
+                        case DEFAULT:
+                        case CONTINUE:
+                        case GOTO:
+                        case LAMBDA:
+                        case DEFER:
+                            if (lastType == LuaTokenTypes.DOT) {
+                                tokens.add(new Pair(len, NORMAL));
+                                break;
+                            }
+                            tokens.add(new Pair(len, KEYWORD));
+                            break;
+                        case LCURLY:
+                            lineStacks2.add(new Rect(lexer.yychar(), lexer.yyline(), 0, lexer.yyline()));
+                            tokens.add(pair = new Pair(len, OPERATOR));
+                            break;
+                        case RCURLY:
+                            int size2 = lineStacks2.size();
+                            if (size2 > 0) {
+                                Rect rect = lineStacks2.remove(size2 - 1);
+                                rect.bottom = lexer.yyline();
+                                rect.right = lexer.yychar();
+                                if (rect.bottom - rect.top > 1)
+                                    lines.add(rect);
+                            }
+                            tokens.add(pair = new Pair(len, OPERATOR));
+                            break;
+                        case LPAREN:
+                        case RPAREN:
+                        case LBRACK:
+                        case RBRACK:
+                        case COMMA:
+                        case DOT:
+                            tokens.add(pair = new Pair(len, OPERATOR));
+                            break;
+                        case STRING:
+                        case LONG_STRING:
+                            tokens.add(pair = new Pair(len, SINGLE_SYMBOL_DELIMITED_A));
+                            if (rowCount > maxRow)
+                                break;
+
+                            if (lastName.equals("require") || lastName.equals("import"))
+                                isModule = true;
+
+                            if (isModule)
+                                bul.append(lexer.yytext());
+                            break;
+                        case NAME:
+                            if (rowCount > maxRow) {
+                                tokens.add(new Pair(len, NORMAL));
+                                break;
+                            }
+
+
+                            if (lastType2 == LuaTokenTypes.NUMBER) {
+                                Pair p = tokens.get(tokens.size() - 1);
+                                p.setSecond(NORMAL);
+                                p.setFirst(p.getFirst() + len);
+                                break;
+                            }
+                            String name = lexer.yytext();
+                            if (lastType == LuaTokenTypes.FUNCTION) {
+                                tokens.add(new Pair(len, LITERAL));
+                                language.addUserWord(name);
+                                LuaParser.addUserWord(name + " :function");
+                            } else if (language.isUserWord(name)) {
+                                tokens.add(new Pair(len, LITERAL));
+                            } else if (lastType == LuaTokenTypes.GOTO || lastType == LuaTokenTypes.AT) {
+                                tokens.add(new Pair(len, LITERAL));
+                            } else if (lastType == LuaTokenTypes.MULT && lastType3 == LuaTokenTypes.LOCAL) {
+                                tokens.add(new Pair(len, OPERATOR));
+                            } else if (language.isBasePackage(name)) {
+                                tokens.add(new Pair(len, NAME));
+                            } else if (lastType == LuaTokenTypes.DOT && language.isBasePackage(lastName) && language.isBaseWord(lastName, name)) {
+                                tokens.add(new Pair(len, NAME));
+                            } else if (language.isName(name)) {
+                                tokens.add(new Pair(len, NAME));
+                            } else {
+                                tokens.add(new Pair(len, NORMAL));
+                            }
+
+                            if (lastType != LuaTokenTypes.DOT) {
+                                boolean loc = false;
+                                if (!loc && values.containsKey(name)) {
+                                    ArrayList<Pair> ls = values.get(name);
+                                    for (Pair l : ls) {
+                                        if (l.getFirst() == idx) {
+                                            Pair p = tokens.get(tokens.size() - 1);
+                                            int tp = l.getSecond();
+                                            if (tp == LexState.VVOID) {
+                                                if (p.getSecond() == NORMAL)
+                                                    p.setSecond(GLOBAL);
+                                                break;
+                                            } else if (tp == LexState.VUPVAL) {
+                                                p.setSecond(UPVAL);
+                                                break;
+                                            } else if (tp == LexState.VLOCAL) {
+                                                p.setSecond(LOCAL);
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (lastType == LuaTokenTypes.ASSIGN && name.equals("require")) {
+                                language.addUserWord(lastName);
+                                LuaParser.addUserWord(lastName + " :require");
+                                if (lastNameIdx >= 0) {
+                                    Pair p = tokens.get(lastNameIdx - 1);
+                                    p.setSecond(LITERAL);
+                                    lastNameIdx = -1;
+                                }
+                            }
+                            lastNameIdx = tokens.size();
+                            lastName = name;
+                            break;
+                        case SHORT_COMMENT:
+                        case BLOCK_COMMENT:
+                        case DOC_COMMENT:
+                            tokens.add(pair = new Pair(len, DOUBLE_SYMBOL_LINE));
+                            break;
+                        case NUMBER:
+                            tokens.add(new Pair(len, LITERAL));
+                            break;
+                        case HEX_COLOR:
+                            tokens.add(new Pair(len, HEX_COLOR));
+                            break;
+                        case HEX_COLOR_HIGH_CONTRAST:
+                            tokens.add(new Pair(len, HEX_COLOR_HIGH_CONTRAST));
+                            break;
+                        default:
+                            tokens.add(pair = new Pair(len, NORMAL));
+                    }
+                    lastType3 = lastType;
+                    if (type != LuaTokenTypes.WHITE_SPACE
+                            ) {
+                        lastType = type;
+                    }
+                    lastType2 = type;
+                    if (pair != null)
+                        lastPair = pair;
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                TextWarriorException.fail(e.getMessage());
+            }
+            if (tokens.isEmpty()) {
+                tokens.add(new Pair(hDoc.length(), NORMAL));
+            }
+            language.updateUserWord();
+            mLines = lines;
+            _tokens = tokens;
+        }
+
+
+        public void tokenize2() {
+            DocumentProvider hDoc = getDocument();
+            Language language = Lexer.getLanguage();
+            ArrayList<Pair> tokens = new ArrayList<Pair>();
+
+            if (!language.isProgLang()) {
+                tokens.add(new Pair(0, NORMAL));
+                _tokens = tokens;
+                return;
+            }
+
+            char[] candidateWord = new char[MAX_KEYWORD_LENGTH];
+            int currentCharInWord = 0;
+            int currentCharStartWord = 0;
+
+            int spanStartPosition = 0;
+            int workingPosition = 0;
+            int state = UNKNOWN;
+            char prevChar = 0;
+
+            hDoc.seekChar(0);
+            while (hDoc.hasNext() && !_abort.isSet()) {
+                char currentChar = hDoc.next();
+
+                switch (state) {
+                    case UNKNOWN:
+                    case NORMAL:
+                    case KEYWORD:
+                    case NAME:
+                    case SINGLE_SYMBOL_WORD:
+                        int pendingState = state;
+                        boolean stateChanged = false;
+                        if (language.isLineStart(prevChar, currentChar)) {
+                            pendingState = DOUBLE_SYMBOL_LINE;
+                            stateChanged = true;
+                        } else if (language.isMultilineStartDelimiter(prevChar, currentChar)) {
+                            pendingState = DOUBLE_SYMBOL_DELIMITED_MULTILINE;
+                            stateChanged = true;
+                        } else if (language.isDelimiterA(currentChar)) {
+                            pendingState = SINGLE_SYMBOL_DELIMITED_A;
+                            stateChanged = true;
+                        } else if (language.isDelimiterB(currentChar)) {
+                            pendingState = SINGLE_SYMBOL_DELIMITED_B;
+                            stateChanged = true;
+                        } else if (language.isLineAStart(currentChar)) {
+                            pendingState = SINGLE_SYMBOL_LINE_A;
+                            stateChanged = true;
+                        } else if (language.isLineBStart(currentChar)) {
+                            pendingState = SINGLE_SYMBOL_LINE_B;
+                            stateChanged = true;
+                        }
+
+
+                        if (stateChanged) {
+                            if (pendingState == DOUBLE_SYMBOL_LINE ||
+                                    pendingState == DOUBLE_SYMBOL_DELIMITED_MULTILINE) {
+                                spanStartPosition = workingPosition - 1;
+                                if (tokens.get(tokens.size() - 1).getFirst() == spanStartPosition) {
+                                    tokens.remove(tokens.size() - 1);
+                                }
+                            } else {
+                                spanStartPosition = workingPosition;
+                            }
+
+                            if (currentCharInWord > 0 && state != NORMAL) {
+                                tokens.add(new Pair(workingPosition - currentCharInWord, NORMAL));
+                            }
+
+                            state = pendingState;
+                            tokens.add(new Pair(spanStartPosition, state));
+                            currentCharInWord = 0;
+                        } else if (language.isWhitespace(currentChar) || language.isOperator(currentChar)) {
+                            if (currentCharInWord > 0) {
+                                if (language.isWordStart(candidateWord[0])) {
+                                    spanStartPosition = workingPosition - currentCharInWord;
+                                    state = SINGLE_SYMBOL_WORD;
+                                    tokens.add(new Pair(spanStartPosition, state));
+                                } else if (language.isKeyword(new String(candidateWord, 0, currentCharInWord))) {
+                                    spanStartPosition = workingPosition - currentCharInWord;
+                                    state = KEYWORD;
+                                    tokens.add(new Pair(spanStartPosition, state));
+                                } else if (language.isName(new String(candidateWord, 0, currentCharInWord))) {
+                                    spanStartPosition = workingPosition - currentCharInWord;
+                                    state = NAME;
+                                    tokens.add(new Pair(spanStartPosition, state));
+                                } else if (state != NORMAL) {
+                                    spanStartPosition = workingPosition - currentCharInWord;
+                                    state = NORMAL;
+                                    tokens.add(new Pair(spanStartPosition, state));
+                                }
+                                currentCharInWord = 0;
+                            }
+
+                            if (state != NORMAL && language.isOperator(currentChar)) {
+                                state = NORMAL;
+                                tokens.add(new Pair(workingPosition, state));
+                            }
+                        } else if (currentCharInWord < MAX_KEYWORD_LENGTH) {
+                            candidateWord[currentCharInWord] = currentChar;
+                            currentCharInWord++;
+                        }
+                        break;
+
+
+                    case DOUBLE_SYMBOL_LINE:
+                    case SINGLE_SYMBOL_LINE_A:
+                    case SINGLE_SYMBOL_LINE_B:
+                        if (language.isMultilineStartDelimiter(prevChar, currentChar)) {
+                            state = DOUBLE_SYMBOL_DELIMITED_MULTILINE;
+                        } else if (currentChar == '\n') {
+                            state = UNKNOWN;
+                        }
+                        break;
+
+
+                    case SINGLE_SYMBOL_DELIMITED_A:
+                        if ((language.isDelimiterA(currentChar) || currentChar == '\n')
+                                && !language.isEscapeChar(prevChar)) {
+                            state = UNKNOWN;
+                        }
+                        else if (language.isEscapeChar(currentChar) && language.isEscapeChar(prevChar)) {
+                            currentChar = ' ';
+                        }
+                        break;
+
+
+                    case SINGLE_SYMBOL_DELIMITED_B:
+                        if ((language.isDelimiterB(currentChar) || currentChar == '\n')
+                                && !language.isEscapeChar(prevChar)) {
+                            state = UNKNOWN;
+                        }
+                        else if (language.isEscapeChar(currentChar)
+                                && language.isEscapeChar(prevChar)) {
+                            currentChar = ' ';
+                        }
+                        break;
+
+                    case DOUBLE_SYMBOL_DELIMITED_MULTILINE:
+                        if (language.isMultilineEndDelimiter(prevChar, currentChar)) {
+                            state = UNKNOWN;
+                        }
+                        break;
+
+                    default:
+                        TextWarriorException.fail("Invalid state in TokenScanner");
+                        break;
+                }
+                ++workingPosition;
+                prevChar = currentChar;
+            }
+
+
+            if (tokens.isEmpty()) {
+                tokens.add(new Pair(0, NORMAL));
+            }
+
+            _tokens = tokens;
+        }
+
+
+    }
+}
