@@ -126,6 +126,11 @@ public class LuaRecyclerAdapter extends RecyclerView.Adapter<LuaRecyclerAdapter.
     private boolean mRefilterPending;
     private Map<String, String> mImageHeaders;
 
+    private String mChildContainerId;
+    private Object mChildLayout;
+    private final WeakHashMap<View, LuaTable<String, Object>> mChildViewsCache = new WeakHashMap<>();
+    private boolean mChildErrorReported;
+
     private View mPreCreatedView;
     private LuaTable<String, Object> mPreCreatedViews;
 
@@ -245,23 +250,10 @@ public class LuaRecyclerAdapter extends RecyclerView.Adapter<LuaRecyclerAdapter.
             return;
         }
 
-        Map<String, String> rowHeaders = extractRowHeaders(row, holder);
+        bindRow(row, holder.views, mChildContainerId);
 
-        for (Map.Entry<String, Object> entry : row.entrySet()) {
-            String key = entry.getKey();
-            if (key == null) continue;
-            Object value = entry.getValue();
-            View target = holder.findView(key);
-            if (target == null) continue;
-            try {
-                if (mDefaultData != null) {
-                    Object def = mDefaultData.get(key);
-                    if (def != null) setHelper(target, def, rowHeaders);
-                }
-                setHelper(target, value, rowHeaders);
-            } catch (Throwable t) {
-                Log.w(TAG, "bind " + key + ": " + t);
-            }
+        if (mChildContainerId != null) {
+            bindChildren(holder, row);
         }
 
         resolveClickView(holder);
@@ -275,6 +267,109 @@ public class LuaRecyclerAdapter extends RecyclerView.Adapter<LuaRecyclerAdapter.
             } catch (Throwable t) {
                 sendError("AdapterInterface.onBindViewHolder", asException(t));
             }
+        }
+    }
+
+    private void bindRow(LuaTable<String, Object> row, LuaTable<String, Object> views, String skipKey) {
+        Map<String, String> rowHeaders = extractRowHeaders(row, views);
+        for (Map.Entry<String, Object> entry : row.entrySet()) {
+            String key = entry.getKey();
+            if (key == null || key.equals(skipKey)) continue;
+            Object value = entry.getValue();
+            Object o;
+            try {
+                o = views.get(key);
+            } catch (Throwable t) {
+                continue;
+            }
+            if (!(o instanceof View)) continue;
+            View target = (View) o;
+            try {
+                if (mDefaultData != null) {
+                    Object def = mDefaultData.get(key);
+                    if (def != null) setHelper(target, def, rowHeaders);
+                }
+                setHelper(target, value, rowHeaders);
+            } catch (Throwable t) {
+                Log.w(TAG, "bind " + key + ": " + t);
+            }
+        }
+    }
+
+    private void bindChildren(ViewHolder holder, LuaTable<String, Object> row) {
+        View cv = holder.findView(mChildContainerId);
+        if (!(cv instanceof ViewGroup)) {
+            if (!mChildErrorReported) {
+                mChildErrorReported = true;
+                sendError("setChildLayout", new IllegalStateException(
+                        "条目布局中不存在 id 为 " + mChildContainerId + " 的 ViewGroup 容器"));
+            }
+            return;
+        }
+        ViewGroup container = (ViewGroup) cv;
+
+        Object v = null;
+        try {
+            v = row.get(mChildContainerId);
+        } catch (Throwable ignored) {
+        }
+        @SuppressWarnings("unchecked")
+        LuaTable<Integer, LuaTable<String, Object>> children =
+                v instanceof LuaTable ? (LuaTable<Integer, LuaTable<String, Object>>) v : null;
+
+        int target = 0;
+        if (children != null) {
+            try {
+                target = children.length();
+            } catch (Throwable t) {
+                target = 0;
+            }
+        }
+
+        if (target <= 0) {
+            container.removeAllViews();
+            if (container.getVisibility() != View.GONE) container.setVisibility(View.GONE);
+            return;
+        }
+        if (container.getVisibility() != View.VISIBLE) container.setVisibility(View.VISIBLE);
+
+        int current = container.getChildCount();
+        while (current > target) {
+            View extra = container.getChildAt(current - 1);
+            mChildViewsCache.remove(extra);
+            container.removeViewAt(current - 1);
+            current--;
+        }
+        while (current < target) {
+            LuaTable<String, Object> views = new LuaTable<>(L);
+            View child = null;
+            try {
+                child = loadlayout.call(mChildLayout, views, container.getClass());
+            } catch (Throwable t) {
+                if (!mChildErrorReported) {
+                    mChildErrorReported = true;
+                    sendError("setChildLayout.onCreate", asException(t));
+                }
+            }
+            if (child == null) return;
+            container.addView(child);
+            mChildViewsCache.put(child, views);
+            current++;
+        }
+
+        for (int i = 0; i < target; i++) {
+            Object o = null;
+            try {
+                o = children.get(i + 1);
+            } catch (Throwable ignored) {
+            }
+            if (!(o instanceof LuaTable)) continue;
+            View child = container.getChildAt(i);
+            LuaTable<String, Object> views = mChildViewsCache.get(child);
+            if (views == null) continue;
+            @SuppressWarnings("unchecked")
+            LuaTable<String, Object> childRow = (LuaTable<String, Object>) o;
+            bindRow(childRow, views, null);
         }
     }
 
@@ -547,11 +642,71 @@ public class LuaRecyclerAdapter extends RecyclerView.Adapter<LuaRecyclerAdapter.
         mAdapterInterface = iface;
     }
 
+    public void setChildLayout(String containerId, Object childLayout) throws LuaException {
+        if (childLayout == null) {
+            mChildContainerId = null;
+            mChildLayout = null;
+            mChildViewsCache.clear();
+            runOnMain(() -> {
+                if (!checkReleased()) notifyDataSetChanged();
+            });
+            return;
+        }
+        if (containerId == null || containerId.length() == 0) {
+            throw new LuaException("LuaRecyclerAdapter.setChildLayout: containerId 不能为空");
+        }
+        if (!(childLayout instanceof LuaObject || childLayout instanceof String)) {
+            throw new LuaException("LuaRecyclerAdapter.setChildLayout: childLayout 必须是布局表或布局模块名");
+        }
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            throw new LuaException("LuaRecyclerAdapter.setChildLayout: 必须在主线程调用");
+        }
+        if (checkReleased()) {
+            throw new LuaException("LuaRecyclerAdapter.setChildLayout: 适配器已 release");
+        }
+
+        LuaTable<String, Object> itemViews = new LuaTable<>(L);
+        View item;
+        try {
+            item = loadlayout.call(mLayout, itemViews, ViewGroup.class);
+        } catch (Throwable t) {
+            throw new LuaException("LuaRecyclerAdapter.setChildLayout: 条目布局无法创建视图\n" + t);
+        }
+        Object container = null;
+        if (item != null) {
+            try {
+                container = itemViews.get(containerId);
+            } catch (Throwable ignored) {
+            }
+        }
+        if (!(container instanceof ViewGroup)) {
+            throw new LuaException("LuaRecyclerAdapter.setChildLayout: 条目布局中不存在 id 为 "
+                    + containerId + " 的 ViewGroup 容器");
+        }
+
+        LuaTable<String, Object> childViews = new LuaTable<>(L);
+        View child;
+        try {
+            child = loadlayout.call(childLayout, childViews, container.getClass());
+        } catch (Throwable t) {
+            throw new LuaException("LuaRecyclerAdapter.setChildLayout: 子布局无法创建视图\n" + t);
+        }
+        if (child == null) {
+            throw new LuaException("LuaRecyclerAdapter.setChildLayout: 子布局无法创建视图（loadlayout 返回 nil）");
+        }
+
+        mChildContainerId = containerId;
+        mChildLayout = childLayout;
+        mChildViewsCache.clear();
+        notifyDataSetChanged();
+    }
+
     public void setImageHeaders(LuaTable<String, Object> headers) {
         mImageHeaders = toStringMap(headers);
     }
 
-    private static Map<String, String> extractRowHeaders(LuaTable<String, Object> row, ViewHolder holder) {
+    private static Map<String, String> extractRowHeaders(LuaTable<String, Object> row,
+                                                         LuaTable<String, Object> views) {
         Object h = null;
         try {
             h = row.get("header");
@@ -559,7 +714,14 @@ public class LuaRecyclerAdapter extends RecyclerView.Adapter<LuaRecyclerAdapter.
         } catch (Throwable ignored) {
         }
         if (!(h instanceof LuaTable)) return null;
-        if (holder.findView("header") != null || holder.findView("headers") != null) return null;
+        if (views != null) {
+            try {
+                if (views.get("header") instanceof View || views.get("headers") instanceof View) {
+                    return null;
+                }
+            } catch (Throwable ignored) {
+            }
+        }
         return toStringMap((LuaTable<String, Object>) h);
     }
 
@@ -799,6 +961,9 @@ public class LuaRecyclerAdapter extends RecyclerView.Adapter<LuaRecyclerAdapter.
             mOnItemClickListener = null;
             mOnItemLongClickListener = null;
             mAdapterInterface = null;
+            mChildContainerId = null;
+            mChildLayout = null;
+            mChildViewsCache.clear();
             mPreCreatedView = null;
             mPreCreatedViews = null;
             mBaseData = null;
