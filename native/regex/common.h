@@ -1,0 +1,98 @@
+
+#ifndef COMMON_H
+#define COMMON_H
+
+#include "lua.h"
+
+#if LUA_VERSION_NUM > 501
+# define lua_objlen lua_rawlen
+  int regexL_typerror (lua_State *L, int narg, const char *tname);
+#endif
+
+#ifndef REX_API
+#  define REX_API LUALIB_API
+#endif
+
+#define GSUB_UNLIMITED   -1
+#define GSUB_CONDITIONAL -2
+
+
+typedef struct {
+  const char* key;
+  int val;
+} flag_pair;
+
+typedef struct {
+  const char * pattern;
+  size_t       patlen;
+  void       * ud;
+  int          cflags;
+  const char * locale;
+  const unsigned char * tables;
+  int          tablespos;
+  void       * syntax;
+  const unsigned char * translate;
+  int          gnusyn;
+} TArgComp;
+
+typedef struct {
+  const char * text;
+  size_t       textlen;
+  int          startoffset;
+  int          eflags;
+  int          funcpos;
+  int          maxmatch;
+  int          funcpos2;
+  int          reptype;
+  size_t       ovecsize;
+  size_t       wscount;
+} TArgExec;
+
+struct tagFreeList;
+
+struct tagBuffer {
+  size_t      size;
+  size_t      top;
+  char      * arr;
+  lua_State * L;
+  struct tagFreeList * freelist;
+};
+
+struct tagFreeList {
+  struct tagBuffer * list[16];
+  int top;
+};
+
+typedef struct tagBuffer TBuffer;
+typedef struct tagFreeList TFreeList;
+
+void freelist_init (TFreeList *fl);
+void freelist_add (TFreeList *fl, TBuffer *buf);
+void freelist_free (TFreeList *fl);
+
+void buffer_init (TBuffer *buf, size_t sz, lua_State *L, TFreeList *fl);
+void buffer_free (TBuffer *buf);
+void buffer_clear (TBuffer *buf);
+void buffer_addbuffer (TBuffer *trg, TBuffer *src);
+void buffer_addlstring (TBuffer *buf, const void *src, size_t sz);
+void buffer_addvalue (TBuffer *buf, int stackpos);
+void buffer_pushresult (TBuffer *buf);
+
+void bufferZ_putrepstring (TBuffer *buf, int reppos, int nsub);
+int  bufferZ_next (TBuffer *buf, size_t *iter, size_t *len, const char **str);
+void bufferZ_addlstring (TBuffer *buf, const void *src, size_t len);
+void bufferZ_addnum (TBuffer *buf, size_t num);
+
+int  get_int_field (lua_State *L, const char* field);
+void set_int_field (lua_State *L, const char* field, int val);
+int  get_flags (lua_State *L, const flag_pair **arr);
+const char *get_flag_key (const flag_pair *fp, int val);
+void *Lmalloc (lua_State *L, size_t size);
+void *Lrealloc (lua_State *L, void *p, size_t osize, size_t nsize);
+void Lfree (lua_State *L, void *p, size_t size);
+
+#ifndef REX_NOEMBEDDEDTEST
+int newmembuffer (lua_State *L);
+#endif
+
+#endif

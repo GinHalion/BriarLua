@@ -1,0 +1,99 @@
+
+package com.android.cglib.dx.io;
+
+public final class Code {
+    private final int registersSize;
+    private final int insSize;
+    private final int outsSize;
+    private final int debugInfoOffset;
+    private final short[] instructions;
+    private final Try[] tries;
+    private final CatchHandler[] catchHandlers;
+
+    public Code(int registersSize, int insSize, int outsSize, int debugInfoOffset,
+            short[] instructions, Try[] tries, CatchHandler[] catchHandlers) {
+        this.registersSize = registersSize;
+        this.insSize = insSize;
+        this.outsSize = outsSize;
+        this.debugInfoOffset = debugInfoOffset;
+        this.instructions = instructions;
+        this.tries = tries;
+        this.catchHandlers = catchHandlers;
+    }
+
+    public int getRegistersSize() {
+        return registersSize;
+    }
+
+    public int getInsSize() {
+        return insSize;
+    }
+
+    public int getOutsSize() {
+        return outsSize;
+    }
+
+    public int getDebugInfoOffset() {
+        return debugInfoOffset;
+    }
+
+    public short[] getInstructions() {
+        return instructions;
+    }
+
+    public Try[] getTries() {
+        return tries;
+    }
+
+    public CatchHandler[] getCatchHandlers() {
+        return catchHandlers;
+    }
+
+    public static class Try {
+        final int startAddress;
+        final int instructionCount;
+        final int handlerOffset;
+
+        Try(int startAddress, int instructionCount, int handlerOffset) {
+            this.startAddress = startAddress;
+            this.instructionCount = instructionCount;
+            this.handlerOffset = handlerOffset;
+        }
+
+        public int getStartAddress() {
+            return startAddress;
+        }
+
+        public int getInstructionCount() {
+            return instructionCount;
+        }
+
+        public int getHandlerOffset() {
+            return handlerOffset;
+        }
+    }
+
+    public static class CatchHandler {
+        final int[] typeIndexes;
+        final int[] addresses;
+        final int catchAllAddress;
+
+        public CatchHandler(int[] typeIndexes, int[] addresses, int catchAllAddress) {
+            this.typeIndexes = typeIndexes;
+            this.addresses = addresses;
+            this.catchAllAddress = catchAllAddress;
+        }
+
+        public int[] getTypeIndexes() {
+            return typeIndexes;
+        }
+
+        public int[] getAddresses() {
+            return addresses;
+        }
+
+        public int getCatchAllAddress() {
+            return catchAllAddress;
+        }
+    }
+}

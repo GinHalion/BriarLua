@@ -1,0 +1,1976 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BriarLua 开发文档</title>
+  <script>
+    /* v1.0.2: 跟随应用深色模式。Doc.lua 按 isDark() 在 URL 尾部追加 #theme=dark，
+       本脚本在样式表解析前同步设置 data-theme，首帧即正确看色（无闪白）。
+       页内锚点（#intro 等）不会含 theme=dark，不影响主题；主题仅随页面加载时
+       的应用模式变化，深色切换后 Doc.lua 会 recreate 重载。 */
+    (function () {
+      var dark = /(^|&)theme=dark/.test((location.hash || "").slice(1));
+      document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+    })();
+  </script>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --bg-sidebar: #fafafa;
+      --bg-code: #f4f4f5;
+      --bg-hover: #f4f4f5;
+      --text: #09090b;
+      --text-body: #3f3f46;
+      --text-muted: #71717a;
+      --text-link: #52525b;
+      --text-code: #18181b;
+      --border: #e4e4e7;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --bg-primary-tint: #eff6ff;
+      --text-primary-tint: #1e40af;
+      --scrollbar-thumb: #d4d4d8;
+      --code-kw: #9333ea;
+      --code-str: #16a34a;
+      --code-cmt: #a1a1aa;
+      --code-fn: #2563eb;
+      --code-num: #ea580c;
+      --shadow-primary: rgba(37, 99, 235, 0.1);
+      --warn: #d97706;
+      --bg-warn: #fffbeb;
+      --text-warn: #92400e;
+      --radius: 8px;
+      --sidebar-w: 260px;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    }
+
+    /* v1.0.2 暗色主题（与应用深色模式同步，zinc 中性色系 + 亮度提升后的功能色） */
+    html[data-theme="dark"] {
+      --bg: #18181b;
+      --bg-sidebar: #131316;
+      --bg-code: #26262b;
+      --bg-hover: #26262b;
+      --text: #f4f4f5;
+      --text-body: #d4d4d8;
+      --text-muted: #a1a1aa;
+      --text-link: #a1a1aa;
+      --text-code: #e4e4e7;
+      --border: #2e2e34;
+      --primary: #60a5fa;
+      --primary-hover: #93c5fd;
+      --bg-primary-tint: #1e2b45;
+      --text-primary-tint: #93c5fd;
+      --scrollbar-thumb: #52525b;
+      --code-kw: #c084fc;
+      --code-str: #4ade80;
+      --code-cmt: #71717a;
+      --code-fn: #60a5fa;
+      --code-num: #fb923c;
+      --shadow-primary: rgba(96, 165, 250, 0.15);
+      --warn: #f59e0b;
+      --bg-warn: #2a2213;
+      --text-warn: #fbbf24;
+    }
+    html[data-theme="dark"] body { color-scheme: dark; }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; scroll-padding-top: 24px; }
+
+    body {
+      font-family: var(--font-sans);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* 侧边栏 */
+    .sidebar {
+      position: fixed;
+      top: 0; left: 0; bottom: 0;
+      width: var(--sidebar-w);
+      background: var(--bg-sidebar);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 24px 0;
+      z-index: 100;
+    }
+    .sidebar::-webkit-scrollbar { width: 6px; }
+    .sidebar::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 3px; }
+
+    .sidebar .brand {
+      padding: 0 24px 16px;
+      font-weight: 700;
+      font-size: 1.1rem;
+      letter-spacing: -0.02em;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 16px;
+      color: var(--text);
+    }
+    .sidebar .brand span { color: var(--text-muted); font-weight: 400; }
+
+    .sidebar .nav-group { margin-bottom: 20px; }
+    .sidebar .nav-title {
+      padding: 0 24px 8px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+    }
+    .sidebar a {
+      display: block;
+      padding: 6px 24px;
+      font-size: 0.875rem;
+      color: var(--text-link);
+      text-decoration: none;
+      transition: all 0.2s;
+      border-left: 2px solid transparent;
+    }
+    .sidebar a:hover { color: var(--text); background: var(--bg-hover); }
+    .sidebar a.active {
+      color: var(--primary);
+      background: var(--bg-primary-tint);
+      border-left-color: var(--primary);
+      font-weight: 500;
+    }
+    .sidebar a.sub { padding-left: 36px; font-size: 0.8rem; }
+
+    /* 主内容区 */
+    .main {
+      margin-left: var(--sidebar-w);
+      padding: 48px 10%;
+      max-width: 900px;
+    }
+
+    /* 顶部英雄区 */
+    .hero {
+      margin-bottom: 64px;
+      padding-bottom: 32px;
+      border-bottom: 1px solid var(--border);
+    }
+    .hero h1 {
+      font-size: 2.5rem;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      line-height: 1.2;
+      margin-bottom: 12px;
+    }
+    .hero p {
+      font-size: 1.1rem;
+      color: var(--text-muted);
+      max-width: 600px;
+    }
+    .hero-links {
+      margin-top: 16px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .hero-links a {
+      display: inline-block;
+      padding: 4px 12px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      font-size: 0.85rem;
+      color: var(--text-body);
+      text-decoration: none;
+      transition: all 0.15s;
+    }
+    .hero-links a:hover {
+      border-color: var(--primary);
+      color: var(--primary);
+      background: var(--bg-primary-tint);
+    }
+
+    /* 章节引导段 */
+    section > p:first-of-type { color: var(--text-body); }
+
+    /* 章节 */
+    section { margin-bottom: 56px; scroll-margin-top: 24px; }
+    h2 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    h3 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin: 24px 0 8px;
+    }
+    p { margin-bottom: 12px; color: var(--text-body); }
+    ul, ol { margin-bottom: 16px; padding-left: 20px; color: var(--text-body); }
+    li { margin-bottom: 4px; }
+
+    /* 代码块 */
+    pre {
+      background: var(--bg-code);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      overflow-x: auto;
+      margin: 16px 0;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      line-height: 1.5;
+      color: var(--text-code);
+    }
+    code {
+      font-family: var(--font-mono);
+      font-size: 0.85em;
+      background: var(--bg-code);
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      color: var(--text-code);
+    }
+    pre code { background: none; border: none; padding: 0; }
+
+    /* 代码高亮 */
+    .kw { color: var(--code-kw); font-weight: 500; }
+    .str { color: var(--code-str); }
+    .cmt { color: var(--code-cmt); font-style: italic; }
+    .fn { color: var(--code-fn); }
+    .num { color: var(--code-num); }
+
+    /* API 列表 */
+    .api-list { margin-top: 16px; }
+    .api-item {
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .api-item:last-child { border-bottom: none; }
+    .api-item .sig {
+      font-family: var(--font-mono);
+      font-size: 0.9rem;
+      color: var(--text);
+      margin-bottom: 4px;
+      font-weight: 500;
+    }
+    .api-item .desc {
+      font-size: 0.875rem;
+      color: var(--text-muted);
+    }
+
+    /* 表格 */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      font-size: 0.875rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    th, td {
+      text-align: left;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      overflow-wrap: anywhere;
+    }
+    th {
+      background: var(--bg-sidebar);
+      font-weight: 600;
+      color: var(--text);
+    }
+    tr:last-child td { border-bottom: none; }
+    td { color: var(--text-body); }
+
+    /* 卡片网格 */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+      margin: 24px 0;
+    }
+    .card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      text-decoration: none;
+      transition: all 0.2s;
+      background: var(--bg);
+    }
+    .card:hover {
+      border-color: var(--primary);
+      box-shadow: 0 4px 12px var(--shadow-primary);
+      transform: translateY(-2px);
+    }
+    .card h4 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+    .card p {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-bottom: 0;
+    }
+    .card .tag {
+      display: inline-block;
+      font-size: 0.7rem;
+      padding: 2px 6px;
+      background: var(--bg-primary-tint);
+      color: var(--primary);
+      border-radius: 4px;
+      margin-bottom: 10px;
+    }
+
+    /* 提示块 */
+    .note {
+      border-left: 3px solid var(--primary);
+      background: var(--bg-primary-tint);
+      border-radius: 0 var(--radius) var(--radius) 0;
+      padding: 12px 16px;
+      margin: 16px 0;
+      font-size: 0.9rem;
+      color: var(--text-primary-tint);
+    }
+    .note.warn {
+      border-left-color: var(--warn);
+      background: var(--bg-warn);
+      color: var(--text-warn);
+    }
+
+    /* 页脚 */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 32px 0;
+      margin-top: 64px;
+      color: var(--text-muted);
+      font-size: 0.875rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    /* 响应式 */
+    @media (max-width: 900px) {
+      .sidebar { display: none; }
+      .main { margin-left: 0; padding: 24px; }
+      .hero h1 { font-size: 2rem; }
+      /* 窄屏：表格内部横向滚动，不撑破页面 */
+      table { display: block; overflow-x: auto; }
+    }
+  </style>
+</head>
+<body>
+
+
+<nav class="sidebar">
+  <div class="brand">BriarLua <span>docs</span></div>
+
+  <div class="nav-group">
+    <div class="nav-title">概述</div>
+    <a href="#intro">简介</a>
+    <a href="#quickstart">快速开始</a>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-title">Lua 基础</div>
+    <a href="#lua-types">值与类型</a>
+    <a href="#lua-vars">变量</a>
+    <a href="#lua-lexical">词法约定</a>
+    <a href="#lua-operators">运算符</a>
+    <a href="#lua-control">控制结构</a>
+    <a href="#lua-functions">函数</a>
+    <a href="#lua-table">表</a>
+    <a href="#lua-scope">可见性规则</a>
+    <a href="#lua-metatable">元表与元方法</a>
+    <a href="#lua-coroutine">协程</a>
+    <a href="#lua-gc">垃圾收集</a>
+    <a href="#lua-error">错误处理</a>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-title">标准库</div>
+    <a href="#lib-basic">基础函数</a>
+    <a href="#lib-table">表操作</a>
+    <a href="#lib-string">字符串</a>
+    <a href="#lib-math">数学</a>
+    <a href="#lib-io">I/O</a>
+    <a href="#lib-os">操作系统</a>
+    <a href="#lib-debug">调试</a>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-title">界面开发</div>
+    <a href="#br-layout">布局表</a>
+    <a href="#ui-controls">基础控件速查</a>
+    <a href="#ui-material">Material You 控件</a>
+    <a href="#ui-editor">编辑器与选择菜单</a>
+    <a href="#br-list">列表适配器</a>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-title">扩展与工具</div>
+    <a href="#br-import">导入模块</a>
+    <a href="#br-method">方法与属性</a>
+    <a href="#br-classes">内置扩展类</a>
+    <a href="#br-api">核心 API</a>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-title">系统能力</div>
+    <a href="#br-canvas">Canvas 绘图</a>
+    <a href="#br-net">网络请求</a>
+    <a href="#br-event">事件与回调</a>
+    <a href="#br-thread">线程与异步</a>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-title">工程发布</div>
+    <a href="#br-project">项目结构</a>
+    <a href="#br-pack">打包发布</a>
+  </div>
+</nav>
+
+
+<div class="main">
+
+  
+  <div class="hero">
+    <h1>BriarLua 开发文档</h1>
+    <p>基于 AndroLua+ / LuaAppX 深度定制。在手机上用 Lua 写安卓应用，支持打包 APK。</p>
+    <div class="hero-links">
+      <a href="#quickstart">三分钟上手</a>
+      <a href="#ui-material">Material You 控件</a>
+      <a href="#ui-editor">编辑器与选择菜单</a>
+      <a href="#br-list">列表适配器</a>
+    </div>
+  </div>
+
+  
+  <section id="intro">
+    <h2>简介</h2>
+    <p>BriarLua 是一个基于 AndroLua 和 LuaAppX Pro 衍生二改的 Android 平台轻量级 Lua IDE。它既拥有 Lua 语言简洁优雅的特质，又通过 LuaJava 桥接直接调用绝大部分 Android 原生 API。</p>
+    <p>相比原版，BriarLua 重写了代码编辑器（支持语法高亮、自定义符号栏、选中内容浮动菜单、API 类名识别跳转）、集成了更完善的打包工具、优化了文件管理器和布局渲染。</p>
+    <p>每个脚本的入口文件通常为 <code>main.lua</code>，项目根目录下必须包含 <code>init.lua</code> 用于定义应用名称、包名等信息。BriarLua 内嵌 <strong>Lua 5.3.3（定制版）</strong>，本手册的 Lua 语言部分以 5.3 语法为准。</p>
+    <div class="grid">
+      <a class="card" href="#quickstart">
+        <span class="tag">入门</span>
+        <h4>快速开始</h4>
+        <p>三分钟写出第一个页面：布局、事件、生命周期。</p>
+      </a>
+      <a class="card" href="#br-layout">
+        <span class="tag">UI</span>
+        <h4>布局表与控件</h4>
+        <p>用 Lua 表声明界面，loadlayout 一键渲染，id 即全局变量。</p>
+      </a>
+      <a class="card" href="#ui-material">
+        <span class="tag">UI</span>
+        <h4>Material You 控件</h4>
+        <p>Material 3 全家桶：卡片、输入框、Chip、开关、滑杆、对话框。</p>
+      </a>
+      <a class="card" href="#ui-editor">
+        <span class="tag">控件</span>
+        <h4>编辑器与选择菜单</h4>
+        <p>LuaEditor 用法：选区手柄、浮动菜单、搜索与自动补全。</p>
+      </a>
+      <a class="card" href="#br-list">
+        <span class="tag">UI</span>
+        <h4>列表适配器</h4>
+        <p>LuaRecyclerAdapter：布局表+数据表即可上列表。</p>
+      </a>
+      <a class="card" href="#br-thread">
+        <span class="tag">进阶</span>
+        <h4>线程与异步</h4>
+        <p>task / thread / timer 三件套，耗时任务不卡界面。</p>
+      </a>
+    </div>
+  </section>
+
+  
+  <section id="quickstart">
+    <h2>快速开始</h2>
+    <p>在你的项目中，通常一开始需要创建 UI 布局与绑定事件。</p>
+
+    <h3>创建布局与组件</h3>
+<pre><code><span class="kw">local</span> LinearLayout = luajava.bindClass <span class="str">"android.widget.LinearLayout"</span>
+<span class="kw">local</span> Button = luajava.bindClass <span class="str">"android.widget.Button"</span>
+
+<span class="kw">local</span> layout = LinearLayout(activity)
+layout.setOrientation(LinearLayout.VERTICAL)
+
+<span class="kw">local</span> button = Button(activity)
+button.setText(<span class="str">"点击我"</span>)
+layout.addView(button)
+
+activity.setContentView(layout)</code></pre>
+
+    <h3>使用事件</h3>
+<pre><code><span class="kw">local</span> listener = luajava.createProxy(
+  <span class="str">"android.view.View$OnClickListener"</span>, {
+    onClick = <span class="kw">function</span>(v)
+      print(<span class="str">"按钮被点击"</span>)
+    <span class="kw">end</span>
+  })
+
+button.setOnClickListener(listener)</code></pre>
+
+    <h3>生命周期回调</h3>
+    <p>页面脚本以全局函数的形式接收 Activity 生命周期事件：</p>
+<pre><code><span class="kw">function</span> onCreate()
+  print(<span class="str">"Activity 创建"</span>)
+<span class="kw">end</span>
+
+<span class="kw">function</span> onResume()
+  print(<span class="str">"返回前台"</span>)
+<span class="kw">end</span>
+
+<span class="kw">function</span> onPause()
+  print(<span class="str">"失去焦点"</span>)
+<span class="kw">end</span>
+
+<span class="kw">function</span> onDestroy()
+  print(<span class="str">"Activity 销毁"</span>)
+<span class="kw">end</span></code></pre>
+    <p>常用回调还包括 <code>onKeyDown(keyCode)</code>（返回键 keyCode 为 4）、<code>onOptionsItemSelected(item)</code>（工具栏菜单）等。</p>
+  </section>
+
+  
+  <section id="lua-types">
+    <h2>值与类型</h2>
+    <p>Lua 有八种基本类型：</p>
+    <table>
+      <tr><th>类型</th><th>说明</th></tr>
+      <tr><td><code>nil</code></td><td>表示空值。false 和 nil 为假，其余为真</td></tr>
+      <tr><td><code>boolean</code></td><td>true 和 false</td></tr>
+      <tr><td><code>number</code></td><td>整数和浮点数（64 位，5.3 起整数与浮点数是不同子类型）</td></tr>
+      <tr><td><code>string</code></td><td>不可变字节序列</td></tr>
+      <tr><td><code>function</code></td><td>Lua 函数或 C 函数</td></tr>
+      <tr><td><code>userdata</code></td><td>Java/C 对象（如 View 实例、LuaEditor）</td></tr>
+      <tr><td><code>thread</code></td><td>协程</td></tr>
+      <tr><td><code>table</code></td><td>唯一的数据结构（关联数组）</td></tr>
+    </table>
+    <p>使用 <code>type(v)</code> 获取值的类型。整数与浮点数可通过 <code>math.type(3)</code>（<code>"integer"</code>）和 <code>math.type(3.0)</code>（<code>"float"</code>）区分。</p>
+  </section>
+
+  <section id="lua-vars">
+    <h2>变量</h2>
+    <p>Lua 中变量默认是全局的（无需声明即可赋值），全局变量存放在环境表 <code>_G</code> 中。使用 <code>local</code> 声明局部变量，访问局部变量比全局变量更快：</p>
+<pre><code>x = <span class="num">1</span>          <span class="cmt">-- 全局变量</span>
+<span class="kw">local</span> y = <span class="num">2</span>    <span class="cmt">-- 局部变量，作用域到本块结束</span>
+
+<span class="cmt">-- 多重赋值：先求值再赋值，可用来交换变量</span>
+a, b = <span class="num">1</span>, <span class="num">2</span>
+a, b = b, a        <span class="cmt">-- a=2, b=1</span>
+
+<span class="cmt">-- 未初始化的变量值为 nil</span>
+print(z)           <span class="cmt">-- nil</span>
+z = <span class="kw">nil</span>          <span class="cmt">-- 删除全局变量的方式</span></code></pre>
+    <div class="note">建议：在 BriarLua 页面脚本中，除生命周期回调等约定函数外，其余一律使用 <code>local</code>，避免污染全局环境、减少内存驻留。</div>
+  </section>
+
+  <section id="lua-lexical">
+    <h2>词法约定</h2>
+    <p>标识符由字母、数字、下划线组成，不能以数字开头，大小写敏感。以下为保留关键字，不能用作标识符：</p>
+<pre><code><span class="kw">and</span>  <span class="kw">break</span>  <span class="kw">do</span>  <span class="kw">else</span>  <span class="kw">elseif</span>  <span class="kw">end</span>
+<span class="kw">false</span>  <span class="kw">for</span>  <span class="kw">function</span>  <span class="kw">goto</span>  <span class="kw">if</span>  <span class="kw">in</span>
+<span class="kw">local</span>  <span class="kw">nil</span>  <span class="kw">not</span>  <span class="kw">or</span>  <span class="kw">repeat</span>  <span class="kw">return</span>
+<span class="kw">then</span>  <span class="kw">true</span>  <span class="kw">until</span>  <span class="kw">while</span></code></pre>
+    <h3>字面量</h3>
+<pre><code><span class="num">3</span>          <span class="cmt">-- 整数</span>
+<span class="num">3.0</span>        <span class="cmt">-- 浮点数</span>
+<span class="num">0x1A</span>       <span class="cmt">-- 十六进制（26）</span>
+<span class="num">1e3</span>        <span class="cmt">-- 科学计数法（1000.0）</span>
+<span class="str">'单引号字符串'</span>
+<span class="str">"双引号字符串"</span>
+<span class="str">[[跨行
+长字符串]]</span>
+<span class="str">"转义：\n 换行 \t 制表 \\ 反斜杠 \" 引号"</span></code></pre>
+    <h3>注释</h3>
+<pre><code><span class="cmt">-- 单行注释</span>
+
+<span class="cmt">--[[ 多行注释
+     可以跨多行 ]]</span>
+
+<span class="cmt">--[==[ 带等号的长注释（等号数量需匹配）]==]</span></code></pre>
+  </section>
+
+  <section id="lua-operators">
+    <h2>运算符</h2>
+    <table>
+      <tr><th>分类</th><th>符号</th><th>说明</th></tr>
+      <tr><td>数学</td><td><code>+ - * / // % ^</code></td><td><code>//</code> 为整除（5.3 新增），<code>^</code> 为幂</td></tr>
+      <tr><td>比较</td><td><code>== ~= &lt; &gt; &lt;= &gt;=</code></td><td><code>~=</code> 为不等于；字符串按字节比较</td></tr>
+      <tr><td>逻辑</td><td><code>and or not</code></td><td>短路求值；<code>x = x or v</code> 常用于设默认值</td></tr>
+      <tr><td>连接</td><td><code>..</code></td><td>字符串连接，数字会被自动转成字符串</td></tr>
+      <tr><td>长度</td><td><code>#</code></td><td>字符串的字节数 / 序列的边界长度</td></tr>
+      <tr><td>位运算</td><td><code>&amp; | ~ &lt;&lt; &gt;&gt;</code></td><td>5.3 新增，操作数必须可转整数</td></tr>
+      <tr><td>取整</td><td><code>math.floor / ceil / trunc</code></td><td>5.3 中 <code>3 // 2 == 1</code>，但 <code>3 / 2 == 1.5</code></td></tr>
+    </table>
+    <p>优先级从高到低（同级左结合）：</p>
+<pre><code>^
+<span class="kw">not</span>  #  - (一元)
+*  /  //  %
++  -
+..
+&lt;&lt;  &gt;&gt;
+&amp;  ~  |
+&lt;  &gt;  &lt;=  &gt;=  ~=  ==
+<span class="kw">and</span>
+<span class="kw">or</span></code></pre>
+  </section>
+
+  <section id="lua-control">
+    <h2>控制结构</h2>
+<pre><code><span class="cmt">-- if 语句</span>
+<span class="kw">if</span> cond <span class="kw">then</span>
+  block
+<span class="kw">elseif</span> cond2 <span class="kw">then</span>
+  block
+<span class="kw">else</span>
+  block
+<span class="kw">end</span>
+
+<span class="cmt">-- while / repeat</span>
+<span class="kw">while</span> cond <span class="kw">do</span> block <span class="kw">end</span>
+<span class="kw">repeat</span> block <span class="kw">until</span> cond   <span class="cmt">-- 循环体至少执行一次</span>
+
+<span class="cmt">-- 数值 for</span>
+<span class="kw">for</span> i = <span class="num">1</span>, <span class="num">10</span>, <span class="num">2</span> <span class="kw">do</span> block <span class="kw">end</span>   <span class="cmt">-- 1,3,5,7,9</span>
+<span class="kw">for</span> i = <span class="num">10</span>, <span class="num">1</span>, <span class="num">-1</span> <span class="kw">do</span> block <span class="kw">end</span> <span class="cmt">-- 倒数</span>
+
+<span class="cmt">-- 泛型 for</span>
+<span class="kw">for</span> k, v <span class="kw">in</span> <span class="fn">pairs</span>(t) <span class="kw">do</span> block <span class="kw">end</span>  <span class="cmt">-- 遍历所有键</span>
+<span class="kw">for</span> i, v <span class="kw">in</span> <span class="fn">ipairs</span>(t) <span class="kw">do</span> block <span class="kw">end</span> <span class="cmt">-- 遍历序列 1..#t</span>
+
+<span class="kw">break</span>      <span class="cmt">-- 跳出最内层循环</span>
+<span class="kw">goto</span> continue  <span class="cmt">-- 5.2+ 支持 goto（只能跳到本函数后面的标签）</span></code></pre>
+    <div class="note">注意：<code>for</code> 的循环变量是局部变量，且在循环内修改不影响步进；<code>ipairs</code> 遇到 <code>nil</code> 空洞即停止。</div>
+  </section>
+
+  <section id="lua-functions">
+    <h2>函数</h2>
+<pre><code><span class="cmt">-- 常规定义（函数名也是变量）</span>
+<span class="kw">local function</span> <span class="fn">add</span>(a, b)
+  <span class="kw">return</span> a + b
+<span class="kw">end</span>
+
+<span class="cmt">-- 多返回值</span>
+<span class="kw">local function</span> <span class="fn">minmax</span>(t)
+  <span class="kw">return</span> <span class="fn">math.min</span>(table.unpack(t)), <span class="fn">math.max</span>(table.unpack(t))
+<span class="kw">end</span>
+<span class="kw">local</span> lo, hi = minmax({<span class="num">3</span>, <span class="num">1</span>, <span class="num">4</span>})
+
+<span class="cmt">-- 可变参数</span>
+<span class="kw">local function</span> <span class="fn">sum</span>(...)
+  <span class="kw">local</span> s = <span class="num">0</span>
+  <span class="kw">for</span> _, v <span class="kw">in</span> <span class="fn">ipairs</span>({...}) <span class="kw">do</span> s = s + v <span class="kw">end</span>
+  <span class="kw">return</span> s
+<span class="kw">end</span>
+
+<span class="cmt">-- select 获取参数个数 / 第 n 个参数</span>
+<span class="fn">print</span>(<span class="fn">select</span>(<span class="str">"#"</span>, <span class="num">1</span>, <span class="num">2</span>, <span class="num">3</span>))  <span class="cmt">-- 3</span>
+
+<span class="cmt">-- 函数是第一类值：可存入表、作为参数传递</span>
+<span class="kw">local</span> t = { run = <span class="kw">function</span>() <span class="kw">return</span> <span class="str">"go"</span> <span class="kw">end</span> }
+<span class="fn">print</span>(t.run())</code></pre>
+    <h3>闭包</h3>
+    <p>内层函数可以引用外层函数的局部变量，即使外层已经返回：</p>
+<pre><code><span class="kw">local function</span> <span class="fn">counter</span>()
+  <span class="kw">local</span> n = <span class="num">0</span>
+  <span class="kw">return function</span>()
+    n = n + <span class="num">1</span>
+    <span class="kw">return</span> n
+  <span class="kw">end</span>
+<span class="kw">end</span>
+<span class="kw">local</span> next_id = counter()
+<span class="fn">print</span>(next_id(), next_id())  <span class="cmt">-- 1  2</span></code></pre>
+    <div class="note">BriarLua 中大量回调（onClick、onCreate 等）都是闭包。注意不要在闭包中无限制引用大对象（如整个布局表），页面关闭时及时解除引用。</div>
+  </section>
+
+  <section id="lua-table">
+    <h2>表</h2>
+    <p>表（Table）是 Lua 唯一的数据结构，可用于实现数组、字典、对象、模块、命名空间等。</p>
+<pre><code><span class="cmt">-- 数组风格（索引从 1 开始）</span>
+<span class="kw">local</span> arr = {<span class="str">"A"</span>, <span class="str">"B"</span>, <span class="str">"C"</span>}
+
+<span class="cmt">-- 字典风格</span>
+<span class="kw">local</span> obj = {name = <span class="str">"BriarLua"</span>, ver = <span class="num">1.8</span>}
+
+<span class="cmt">-- 混合 + 显式索引</span>
+<span class="kw">local</span> t = {<span class="str">"first"</span>, key = <span class="str">"value"</span>, [<span class="num">10</span>] = <span class="str">"ten"</span>}
+
+<span class="cmt">-- 访问：点号与方括号等价</span>
+<span class="fn">print</span>(arr[<span class="num">1</span>])       <span class="cmt">--&gt; A</span>
+<span class="fn">print</span>(obj.name)     <span class="cmt">--&gt; BriarLua</span>
+<span class="fn">print</span>(obj[<span class="str">"name"</span>])   <span class="cmt">--&gt; BriarLua</span>
+
+<span class="cmt">-- 遍历</span>
+<span class="kw">for</span> i, v <span class="kw">in</span> <span class="fn">ipairs</span>(arr) <span class="kw">do</span> <span class="fn">print</span>(i, v) <span class="kw">end</span>
+<span class="kw">for</span> k, v <span class="kw">in</span> <span class="fn">pairs</span>(obj) <span class="kw">do</span> <span class="fn">print</span>(k, v) <span class="kw">end</span></code></pre>
+    <div class="note warn"><strong>#arr 的陷阱</strong>：长度运算符 <code>#</code> 只对"序列"（无空洞的 1..n 数组）有定义。带空洞的表请自行维护计数，或用 <code>table.maxn</code>（5.1）/手动遍历。</div>
+  </section>
+
+  <section id="lua-scope">
+    <h2>可见性规则</h2>
+    <p>Lua 使用词法作用域（Lexical Scoping）：局部变量的作用域从声明处开始，到所在块（<code>do...end</code> / 函数体 / 控制结构体）结束为止。</p>
+<pre><code><span class="kw">local</span> x = <span class="str">"外层"</span>
+<span class="kw">do</span>
+  <span class="kw">local</span> x = <span class="str">"内层"</span>   <span class="cmt">-- 遮蔽外层同名变量</span>
+  <span class="fn">print</span>(x)          <span class="cmt">--&gt; 内层</span>
+<span class="kw">end</span>
+<span class="fn">print</span>(x)            <span class="cmt">--&gt; 外层</span>
+
+<span class="cmt">-- 内层函数可读取外层局部变量（上值 / upvalue）</span>
+<span class="kw">local function</span> <span class="fn">make</span>()
+  <span class="kw">local</span> secret = <span class="num">42</span>
+  <span class="kw">return function</span>() <span class="kw">return</span> secret <span class="kw">end</span>
+<span class="kw">end</span></code></pre>
+    <p>常见技巧：用 <code>do...end</code> 包裹初始化代码，让临时变量尽快离开作用域被回收。</p>
+  </section>
+
+  <section id="lua-metatable">
+    <h2>元表与元方法</h2>
+    <p>元表（Metatable）允许改变表的行为：算术运算、比较、索引访问、调用等。每个事件对应一个元方法，以双下划线开头：</p>
+    <table>
+      <tr><th>元方法</th><th>触发时机</th></tr>
+      <tr><td><code>__index</code></td><td>读取不存在的键（表或函数，可实现继承）</td></tr>
+      <tr><td><code>__newindex</code></td><td>向不存在的键赋值</td></tr>
+      <tr><td><code>__call</code></td><td>把表当函数调用 <code>t(...)</code></td></tr>
+      <tr><td><code>__tostring</code></td><td><code>tostring(t)</code> / print 时的输出</td></tr>
+      <tr><td><code>__len</code></td><td><code>#t</code></td></tr>
+      <tr><td><code>__eq / __lt / __le</code></td><td>比较运算</td></tr>
+      <tr><td><code>__add / __sub / __mul / __div / __mod / __concat ...</code></td><td>算术与连接运算</td></tr>
+    </table>
+<pre><code><span class="cmt">-- 简单的类与继承</span>
+<span class="kw">local</span> Animal = {}
+Animal.__index = Animal
+
+<span class="kw">function</span> Animal.<span class="fn">new</span>(name)
+  <span class="kw">return setmetatable</span>({name = name}, Animal)
+<span class="kw">end</span>
+
+<span class="kw">function</span> Animal:<span class="fn">speak</span>()          <span class="cmt">-- 冒号定义：自动接收 self</span>
+  <span class="kw">return</span> self.name .. <span class="str">" 发出声音"</span>
+<span class="kw">end</span>
+
+<span class="kw">local</span> dog = Animal.new(<span class="str">"旺财"</span>)
+<span class="fn">print</span>(dog:speak())                <span class="cmt">--&gt; 旺财 发出声音</span>
+
+<span class="cmt">-- __index 链实现继承</span>
+<span class="kw">local</span> Dog = setmetatable({}, {__index = Animal})
+Dog.__index = Dog
+<span class="kw">function</span> Dog:<span class="fn">speak</span>() <span class="kw">return</span> self.name .. <span class="str">" 汪汪"</span> <span class="kw">end</span></code></pre>
+    <p>BriarLua 源码中的典型应用：<code>MyColor</code> 模块通过 <code>__index</code> 把 <code>MyColor.colorPrimary</code> 透明地映射到 Material 颜色查询。</p>
+  </section>
+
+  <section id="lua-coroutine">
+    <h2>协程</h2>
+    <p>协程（coroutine）是用户态的可挂起函数，适合"分段产出数据"的场景（生成器、状态机）。它与线程不同：任一时刻只有一个协程在运行，且切换只发生在显式调用 yield/resume 处。</p>
+<pre><code><span class="kw">local</span> co = coroutine.<span class="fn">create</span>(<span class="kw">function</span>(a, b)
+  <span class="fn">print</span>(<span class="str">"第一步"</span>, a + b)
+  <span class="kw">local</span> got = coroutine.<span class="fn">yield</span>(a * b)   <span class="cmt">-- 挂起并回传结果</span>
+  <span class="fn">print</span>(<span class="str">"收到主线程数据"</span>, got)
+  <span class="kw">return</span> <span class="str">"结束"</span>
+<span class="kw">end</span>)
+
+<span class="fn">print</span>(coroutine.<span class="fn">resume</span>(co, <span class="num">3</span>, <span class="num">4</span>))  <span class="cmt">-- true 7</span>
+<span class="fn">print</span>(coroutine.<span class="fn">resume</span>(co, <span class="str">"hello"</span>))  <span class="cmt">-- true 结束</span>
+
+<span class="cmt">-- 生成器风格：wrap 返回的函数直接当作迭代器</span>
+<span class="kw">local</span> range = coroutine.<span class="fn">wrap</span>(<span class="kw">function</span>(n)
+  <span class="kw">for</span> i = <span class="num">1</span>, n <span class="kw">do</span> coroutine.<span class="fn">yield</span>(i) <span class="kw">end</span>
+<span class="kw">end</span>)
+<span class="kw">for</span> v <span class="kw">in</span> range <span class="kw">do</span> <span class="fn">print</span>(v) <span class="kw">end</span></code></pre>
+    <div class="note warn">协程不是并行线程：resume 中如果执行了耗时/阻塞操作（网络、sleep），整个应用界面仍会卡住。耗时任务请使用 <a href="#br-thread">线程与异步</a> 一节的 <code>task</code>/<code>thread</code>。</div>
+  </section>
+
+  <section id="lua-gc">
+    <h2>垃圾收集</h2>
+    <p>Lua 5.3 采用分步增量式垃圾收集器，自动回收不再被引用的对象（表、函数、userdata 等）。相关接口：</p>
+<pre><code>collectgarbage(<span class="str">"collect"</span>)   <span class="cmt">-- 执行一次完整 GC 循环</span>
+collectgarbage(<span class="str">"count"</span>)     <span class="cmt">-- 当前已用内存，单位 KB（返回两个值）</span>
+collectgarbage(<span class="str">"step"</span>)       <span class="cmt">-- 执行一步增量 GC</span>
+collectgarbage(<span class="str">"stop"</span>)        <span class="cmt">-- 停止自动 GC（慎用）</span>
+collectgarbage(<span class="str">"restart"</span>)     <span class="cmt">-- 恢复自动 GC</span></code></pre>
+    <p>BriarLua 页面的 <code>onDestroy</code> 中通常这样收尾（框架源码同款写法）：</p>
+<pre><code><span class="kw">function</span> onDestroy()
+  <span class="cmt">-- 释放大对象引用、注销监听器、关闭 Cursor 等</span>
+  bigTable = <span class="kw">nil</span>
+  collectgarbage(<span class="str">"collect"</span>)
+  collectgarbage(<span class="str">"step"</span>)
+<span class="kw">end</span></code></pre>
+    <div class="note">Java 侧对象（userdata）由 Lua GC 与 Java GC 共同管理：Lua 侧包装对象被回收后，Java 对象失去引用，交给系统回收。避免把 Activity/View 存入长生命周期全局表造成泄漏。</div>
+  </section>
+
+  <section id="lua-error">
+    <h2>错误处理</h2>
+<pre><code><span class="cmt">-- 抛出错误：error(msg, level)，level=1 指向调用处，2 指向调用者的调用处</span>
+<span class="kw">local function</span> <span class="fn">mustNumber</span>(v)
+  <span class="kw">if</span> type(v) ~= <span class="str">"number"</span> <span class="kw">then</span> <span class="fn">error</span>(<span class="str">"期望 number，得到 "</span> .. type(v), <span class="num">2</span>) <span class="kw">end</span>
+  <span class="kw">return</span> v
+<span class="kw">end</span>
+
+<span class="cmt">-- pcall：保护调用，出错不中断程序</span>
+<span class="kw">local</span> ok, result = <span class="fn">pcall</span>(mustNumber, <span class="str">"abc"</span>)
+<span class="kw">if</span> not ok <span class="kw">then</span> <span class="fn">print</span>(<span class="str">"出错了: "</span> .. result) <span class="kw">end</span>
+
+<span class="cmt">-- xpcall：可附带错误处理函数（如打印调用栈）</span>
+<span class="kw">local</span> ok2, err = <span class="fn">xpcall</span>(mustNumber, debug.traceback, <span class="str">"abc"</span>)
+
+<span class="cmt">-- assert：条件为假时抛错，常用于校验返回值</span>
+<span class="kw">local</span> f = <span class="fn">assert</span>(io.open(<span class="str">"/sdcard/test.txt"</span>, <span class="str">"r"</span>))</code></pre>
+    <p>错误对象可以是任意值（字符串、table）。框架约定：错误消息若以 <code>"src:"</code> 开头会被追加源码位置。BriarLua 运行脚本出错时，错误与回溯会显示在日志页（工具 → 日志）。</p>
+    <div class="note">涉及 Java 调用的代码块建议一律 <code>pcall</code> 包裹：Java 异常会作为 Lua 错误抛出，未捕获时直接中断脚本。</div>
+  </section>
+
+  
+
+  <section id="lib-basic">
+    <h2>基础函数（basic）</h2>
+    <p>全局基础函数无需 require 即可使用：</p>
+    <div class="api-list">
+      <div class="api-item">
+        <div class="sig">print(...)</div>
+        <p class="desc">打印任意个值，制表符分隔。BriarLua 中转发到日志页（工具 → 日志）。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig">type(v) → string</div>
+        <p class="desc">返回类型名："nil" / "boolean" / "number" / "string" / "table" / "function" / "userdata" / "thread"。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig">tostring(v) / tonumber(v [, base])</div>
+        <p class="desc">类型转换。tonumber 转换失败返回 nil；支持 2~36 进制（字符串参数时）。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig">pairs(t) / ipairs(t)</div>
+        <p class="desc">遍历器。pairs 遍历全部键（顺序不定）；ipairs 从 1 递增直到遇到 nil。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig">next(t [, k])</div>
+        <p class="desc">底层遍历原语，pairs 即由它实现。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig">select(n, ...) / select("#", ...)</div>
+        <p class="desc">取出第 n 个之后的可变参数 / 统计可变参数个数。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig">table.unpack(t [, i [, j]])</div>
+        <p class="desc">表展开为多值：print(table.unpack({1,2,3}))。BriarLua 桥接 Java 数组时常用（亦可用 luajava.astable）。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig">rawget(t, k) / rawset(t, k, v) / rawequal(a, b) / rawlen(t)</div>
+        <p class="desc">绕过元方法直接操作表。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig">setmetatable(t, mt) / getmetatable(t)</div>
+        <p class="desc">设置 / 读取元表，见 <a href="#lua-metatable">元表与元方法</a>。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig">assert(v [, msg]) / error(msg [, level]) / pcall(f, ...) / xpcall(f, handler, ...)</div>
+        <p class="desc">错误处理，见 <a href="#lua-error">错误处理</a>。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig">_VERSION</div>
+        <p class="desc">当前解释器版本字符串，BriarLua 为 "Lua 5.3"（定制）。</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="lib-table">
+    <h2>表操作（table）</h2>
+    <div class="api-list">
+      <div class="api-item">
+        <div class="sig">table.insert(t, [pos,] v)</div>
+        <p class="desc">尾部（或 pos 处）插入元素，pos 版本会移动后续元素。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig">table.remove(t [, pos])</div>
+        <p class="desc">移除并返回元素，默认末尾。配合 insert 可实现栈 / 队列。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig">table.concat(t [, sep [, i [, j]]])</div>
+        <p class="desc">把序列连接为字符串，比 .. 循环拼接快得多。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig">table.sort(t [, comp])</div>
+        <p class="desc">原地排序，默认升序。comp(a, b) 在 a 应排在 b 前时返回 true。排序不稳定。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig">table.pack(...) / table.unpack(t)</div>
+        <p class="desc">多值 ↔ 表互转；pack 结果带字段 n 记录个数。</p>
+      </div>
+    </div>
+<pre><code><span class="kw">local</span> names = {<span class="str">"Charlie"</span>, <span class="str">"Alice"</span>, <span class="str">"Bob"</span>}
+table.<span class="fn">sort</span>(names)                       <span class="cmt">-- 字典序</span>
+table.<span class="fn">sort</span>(names, <span class="kw">function</span>(a, b) <span class="kw">return</span> #a &lt; #b <span class="kw">end</span>) <span class="cmt">-- 按长度</span>
+table.<span class="fn">insert</span>(names, <span class="str">"Dave"</span>)            <span class="cmt">-- 尾插</span>
+<span class="fn">print</span>(table.<span class="fn">concat</span>(names, <span class="str">", "</span>))    <span class="cmt">-- Alice, Bob, Dave, Charlie（上次排序结果）</span></code></pre>
+  </section>
+
+  <section id="lib-string">
+    <h2>字符串（string）</h2>
+    <p>字符串不可变，所有操作返回新串。Lua 正则并非 POSIX 正则，字符类用 <code>%</code> 引导：</p>
+    <table>
+      <tr><th>模式</th><th>含义</th></tr>
+      <tr><td><code>%a %d %s %w</code></td><td>字母 / 数字 / 空白 / 字母数字</td></tr>
+      <tr><td><code>%u %l</code></td><td>大写 / 小写字母</td></tr>
+      <tr><td><code>%p</code></td><td>标点符号</td></tr>
+      <tr><td><code>%.</code> <code>%%</code></td><td>转义点号、百分号本身</td></tr>
+      <tr><td><code>[abc] [^abc] [a-z]</code></td><td>字符集合、否定集合、范围</td></tr>
+      <tr><td><code>+ * - ?</code></td><td>贪婪 1+ / 贪婪 0+ / 懒惰 0+ / 可选</td></tr>
+      <tr><td><code>%b()</code> <code>%f[set]</code></td><td>平衡匹配 / 边界检测</td></tr>
+      <tr><td><code>()</code></td><td>捕获组，<code>%1</code> 反向引用</td></tr>
+    </table>
+    <div class="api-list">
+      <div class="api-item">
+        <div class="sig">string.format(fmt, ...)</div>
+        <p class="desc">格式化：%d 整数 %s 字符串 %f 浮点 %x 十六进制 %q 安全引用（可回读的字符串字面量）。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig">string.find(s, pat [, init [, plain]])</div>
+        <p class="desc">返回起止下标；plain=true 时关闭模式匹配做纯文本查找。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig">string.match(s, pat [, init])</div>
+        <p class="desc">返回匹配内容；有捕获组时返回多个值。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig">string.gmatch(s, pat)</div>
+        <p class="desc">返回迭代器，逐个产出所有匹配。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig">string.gsub(s, pat, repl [, n])</div>
+        <p class="desc">全局替换。repl 可为字符串（%1 引用捕获）、表或函数。返回新串和替换次数。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig">string.sub(s, i [, j]) / rep / len / upper / lower / reverse</div>
+        <p class="desc">子串（可为负下标）/ 重复 / 字节长度 / 大小写 / 反转。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig">string.byte(s [, i [, j]]) / string.char(...)</div>
+        <p class="desc">字符与字节码互转。</p>
+      </div>
+    </div>
+<pre><code><span class="kw">local</span> s = <span class="str">"BriarLua 1.8"</span>
+
+<span class="cmt">-- 提取版本号：数字.数字</span>
+<span class="kw">local</span> ver = s:<span class="fn">match</span>(<span class="str">"(%d+%.%d+)"</span>)        <span class="cmt">--&gt; "1.8"</span>
+
+<span class="cmt">-- 逐词扫描</span>
+<span class="kw">for</span> w <span class="kw">in</span> s:<span class="fn">gmatch</span>(<span class="str">"%a+"</span>) <span class="kw">do</span> <span class="fn">print</span>(w) <span class="kw">end</span>  <span class="cmt">-- BriarLua</span>
+
+<span class="cmt">-- 替换 + 引用捕获</span>
+<span class="fn">print</span>(<span class="fn">string.format</span>(<span class="str">"%s v%s"</span>, <span class="str">"app"</span>, ver))
+
+<span class="cmt">-- 注意：中文一个字是 3 个 UTF-8 字节，sub 按字节截断可能截出乱码</span>
+<span class="cmt">-- 截取中文请按字节长度为 3 的倍数来截</span></code></pre>
+  </section>
+
+  <section id="lib-math">
+    <h2>数学（math）</h2>
+    <div class="api-list">
+      <div class="api-item">
+        <div class="sig">math.floor(x) / math.ceil(x)</div>
+        <p class="desc">向下 / 向上取整，返回整数。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig">math.abs / math.max / math.min / math.sqrt / math.exp</div>
+        <p class="desc">常规运算。sqrt/exp 返回浮点数。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig">math.fmod(x, y) / math.huge / math.pi</div>
+        <p class="desc">取余（结果符号同 x）/ 无穷大 / 圆周率。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig">math.random([m [, n]]) / math.randomseed(x)</div>
+        <p class="desc">随机数：无参返回 [0,1) 浮点；一个参数返回 [1,m] 整数；两个参数返回 [m,n] 整数。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig">math.tointeger(x) / math.type(x)</div>
+        <p class="desc">5.3 新增：可转整数则转（否则失败返回 nil）/ 区分 "integer" 与 "float"。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig">math.sin / cos / tan / asin / acos / atan(y[, x]) / log(x[, base])</div>
+        <p class="desc">三角与对数，参数为弧度。log 第二参数 5.3 起支持。</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="lib-io">
+    <h2>I/O（io）</h2>
+    <p>BriarLua 继承完整 Lua IO 库，读写路径受 Android 沙箱与存储权限约束。推荐用应用专属目录或授权后的公共目录：</p>
+<pre><code><span class="cmt">-- 写文件（简单方式）</span>
+<span class="kw">local</span> f = <span class="fn">assert</span>(io.open(<span class="str">"/sdcard/BriarLua/test.txt"</span>, <span class="str">"w"</span>))
+f:<span class="fn">write</span>(<span class="str">"hello\n"</span>)
+f:<span class="fn">close</span>()
+
+<span class="cmt">-- 读文件：*a 全部 / *l 一行（默认） / n 数字</span>
+<span class="kw">local</span> g = io.<span class="fn">open</span>(<span class="str">"/sdcard/BriarLua/test.txt"</span>, <span class="str">"r"</span>)
+<span class="kw">local</span> all = g:<span class="fn">read</span>(<span class="str">"*a"</span>)
+g:<span class="fn">close</span>()
+
+<span class="cmt">-- io.lines 逐行迭代</span>
+<span class="kw">for</span> line <span class="kw">in</span> io.<span class="fn">lines</span>(<span class="str">"/sdcard/BriarLua/test.txt"</span>) <span class="kw">do</span>
+  <span class="fn">print</span>(line)
+<span class="kw">end</span></code></pre>
+    <div class="note">工程实践中更推荐 <code>require "utils.Project"</code> 的 <code>readFile / writeFile</code>：自动 UTF-8 编码、自动建父目录、出错返回 nil 而不是抛异常。写 Android 11+ 公共目录（如 /sdcard/Download）需要 MANAGE_EXTERNAL_STORAGE 或分区存储 API。</div>
+  </section>
+
+  <section id="lib-os">
+    <h2>操作系统（os）</h2>
+    <div class="api-list">
+      <div class="api-item">
+        <div class="sig">os.time([table])</div>
+        <p class="desc">当前时间戳（秒）；传入 {year=,month=,day=,hour=,...} 表可换算指定时间。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig">os.date([fmt [, time]])</div>
+        <p class="desc">格式化时间：os.date("%Y-%m-%d %H:%M:%S")。!前缀用 UTC。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig">os.clock()</div>
+        <p class="desc">程序已用 CPU 时间（秒），用于性能测量。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig">os.getenv("PATH") / os.remove / os.rename / os.tmpname</div>
+        <p class="desc">环境变量与文件管理；在 Android 沙箱内部分功能受限。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig">os.exit([code]) / os.difftime(t2, t1)</div>
+        <p class="desc">退出（谨慎：会结束整个 Lua 状态）/ 时间差（秒）。</p>
+      </div>
+    </div>
+    <div class="note warn"><code>os.execute</code> 在 Android 上基本不可用（无系统 shell 可调用），如需执行系统命令请改用 Java API（Runtime.exec）。</div>
+  </section>
+
+  <section id="lib-debug">
+    <h2>调试（debug）</h2>
+    <div class="api-list">
+      <div class="api-item">
+        <div class="sig">debug.traceback([msg [, level]])</div>
+        <p class="desc">返回调用栈字符串，常作为 xpcall 的 handler。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig">debug.getinfo(f [, what])</div>
+        <p class="desc">函数信息：source、currentline、name、nups 等。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig">debug.getlocal / setlocal / getupvalue / setupvalue</div>
+        <p class="desc">读写局部变量与上值（编号从 1 开始）。</p>
+      </div>
+    </div>
+    <p>BriarLua 亦提供实用封装 <code>printstack()</code>（打印 1~16 层调用栈到日志页）与 <code>dump(o)</code>（递归打印任意表的树形结构，排环），两者均为全局函数。</p>
+  </section>
+
+  
+
+  <section id="br-import">
+    <h2>导入模块</h2>
+    <p>三种方式引入 Java 类与 Lua 模块：</p>
+<pre><code><span class="kw">local</span> bindClass = luajava.bindClass
+
+<span class="cmt">-- 1. luajava.bindClass：导入任意 Java 类（推荐，语义最明确）</span>
+<span class="kw">local</span> TextView = bindClass <span class="str">"android.widget.TextView"</span>
+
+<span class="cmt">-- 2. import()：把类以简名放进当前环境，自动搜索 java.lang / java.util / com.androlua 包</span>
+import <span class="str">"android.widget.Button"</span>
+<span class="kw">local</span> btn = Button(activity)
+
+<span class="cmt">-- 3. require：加载 BriarLua 内建 Lua 模块（assets/lua 下）</span>
+<span class="kw">local</span> ProjectUtil = require <span class="str">"utils.Project"</span>
+<span class="kw">local</span> MyToast = require <span class="str">"utils.Toast"</span></code></pre>
+    <p><code>import</code> 还支持通配符与 dex：<code>import "android.widget.*"</code>（惰性包对象）、<code>import "dex名:完整类名"</code>。</p>
+    <div class="note">不确定某个类的完整名字？在编辑器里选中类名，符号栏首格会显示完整类名，点击可"复制导入语句"或跳转 API 阅览器。全部可用类名见 API 阅览器（工具 → API阅览器）。</div>
+  </section>
+
+  <section id="br-method">
+    <h2>方法与属性</h2>
+    <p>luajava 绑定的 Java 对象遵循以下访问规则：</p>
+    <h3>方法调用</h3>
+<pre><code><span class="kw">local</span> btn = Button(activity)
+btn.setText(<span class="str">"确定"</span>)              <span class="cmt">-- 调用 Java 方法 setText(CharSequence)</span>
+btn.setText(<span class="str">"确定"</span>, <span class="kw">nil</span>)      <span class="cmt">-- 多参重载按参数个数自动匹配</span>
+
+<span class="cmt">-- 返回值直接就是 Lua 值：int → number，String → string，boolean → boolean</span>
+<span class="kw">local</span> w = btn.getWidth()           <span class="cmt">-- number</span>
+<span class="kw">local</span> s = btn.getText().toString() <span class="cmt">-- CharSequence 通常需要再 toString</span></code></pre>
+    <h3>链式调用</h3>
+    <p>返回自身的方法可以连续点下去（AndroLua 生态里 Builder 大量如此）：</p>
+<pre><code><span class="kw">local</span> builder = MaterialAlertDialogBuilder(activity)
+  .setTitle(<span class="str">"标题"</span>)
+  .setMessage(<span class="str">"内容"</span>)
+  .setPositiveButton(<span class="str">"确定"</span>, <span class="kw">nil</span>)
+builder.show()</code></pre>
+    <h3>静态成员与内部类</h3>
+<pre><code><span class="kw">local</span> View = bindClass <span class="str">"android.view.View"</span>
+btn.setVisibility(View.VISIBLE)     <span class="cmt">-- 静态常量直接点访问</span>
+
+<span class="cmt">-- 接口 / 内部类用 $ 连接</span>
+<span class="kw">local</span> listener = luajava.createProxy(
+  <span class="str">"android.view.View$OnClickListener"</span>, { onClick = <span class="kw">function</span>(v) <span class="kw">end</span> })</code></pre>
+    <h3>属性访问</h3>
+    <p>LuaBridge 同样暴露 getter/setter 风格属性：在布局表中 <code>text = "..."</code> 等价于 <code>setText("...")</code>，<code>layout_width / layout_height / padding / id</code> 等由 loadlayout 特殊处理。</p>
+    <div class="note warn">Java 重载方法若参数类型不匹配会抛 LuaException；不确定时可先 pcall。null 参数用 <code>nil</code> 传递。</div>
+  </section>
+
+  <section id="br-layout">
+    <h2>布局表</h2>
+    <p>BriarLua 支持通过 Lua 表（Table）来构建 UI 布局，由 <code>loadlayout()</code> 函数加载：</p>
+<pre><code><span class="kw">local</span> bindClass = luajava.bindClass
+<span class="kw">local</span> LinearLayoutCompat = bindClass <span class="str">"androidx.appcompat.widget.LinearLayoutCompat"</span>
+<span class="kw">local</span> AppCompatTextView = bindClass <span class="str">"androidx.appcompat.widget.AppCompatTextView"</span>
+
+<span class="kw">local</span> layout = {
+  LinearLayoutCompat,
+  layout_width = -1,            <span class="cmt">-- match_parent；-2 为 wrap_content</span>
+  layout_height = -1,
+  orientation = <span class="str">"vertical"</span>,      <span class="cmt">-- setOrientation 的字符串形式</span>
+  {
+    AppCompatTextView,
+    id = <span class="str">"myTitle"</span>,          <span class="cmt">-- 该控件将绑定为全局变量 myTitle</span>
+    text = <span class="str">"Hello BriarLua"</span>,
+    textSize = <span class="str">"16sp"</span>,
+    textColor = <span class="str">"#333333"</span>,
+    padding = <span class="str">"8dp"</span>,
+  }
+}
+
+<span class="cmt">-- views 表可接住全部 id 绑定（推荐：避免污染全局）</span>
+<span class="kw">local</span> views = {}
+activity.setContentView(loadlayout(layout, views))
+views.myTitle.setText(<span class="str">"改标题"</span>)</code></pre>
+    <p>常用属性速查：<code>layout_width / layout_height</code>（-1、-2 或 "100dp"）、<code>layout_gravity / gravity</code>、<code>layout_weight</code>、<code>background</code>（"#RRGGBB"、"?attr/名"、图片路径）、<code>src</code>、<code>onClick</code>（直接绑函数）。BriarLua 源码中的布局文件位于工程 <code>assets/layout/</code> 目录，可作参考模板。</p>
+    <div class="note">编辑器内置的布局文件（layout.editor / layout.setting 等）通过 <code>loadlayout("layout.xxx")</code> 按名字加载，加载后各 id 自动成为全局变量。</div>
+  </section>
+
+  <section id="ui-controls">
+    <h2>基础控件速查</h2>
+    <p>布局表第一项是 <code>bindClass</code> 得到的类对象（或现成 View 实例），随后为属性；
+    嵌套表即子控件，<code>id</code> 自动绑定到 views 表。下表列出最常用的容器与控件，
+    完整类名可在 API 阅览器检索。</p>
+
+    <h3>容器</h3>
+    <table>
+      <tr><th>容器</th><th>bindClass 路径</th><th>要点</th></tr>
+      <tr><td>LinearLayoutCompat</td><td>androidx.appcompat.widget.LinearLayoutCompat</td><td>线性排列；orientation / gravity，子项 layout_weight 分剩余空间</td></tr>
+      <tr><td>FrameLayout</td><td>android.widget.FrameLayout</td><td>层叠摆放，子项 layout_gravity 定位</td></tr>
+      <tr><td>RelativeLayout</td><td>android.widget.RelativeLayout</td><td>相对定位：layout_below / layout_toRightOf / layout_alignParentBottom 等</td></tr>
+      <tr><td>ConstraintLayout</td><td>androidx.constraintlayout.widget.ConstraintLayout</td><td>约束布局，layout_constraint* 属性全部可用</td></tr>
+      <tr><td>CoordinatorLayout</td><td>androidx.coordinatorlayout.widget.CoordinatorLayout</td><td>协调滚动容器；layout_behavior 挂接行为</td></tr>
+      <tr><td>DrawerLayout</td><td>androidx.drawerlayout.widget.DrawerLayout</td><td>侧滑抽屉，子项 layout_gravity = "start" 进侧栏</td></tr>
+      <tr><td>ScrollView</td><td>android.widget.ScrollView</td><td>垂直滚动（只允许一个子项，再嵌 LinearLayout）</td></tr>
+      <tr><td>ViewPager</td><td>androidx.viewpager.widget.ViewPager</td><td>翻页容器；pages 属性直接喂布局表数组</td></tr>
+    </table>
+
+    <h3>基础控件</h3>
+    <table>
+      <tr><th>控件</th><th>bindClass 路径</th><th>常用属性</th></tr>
+      <tr><td>AppCompatTextView</td><td>androidx.appcompat.widget.AppCompatTextView</td><td>text / textSize / textColor / maxLines / ellipsize / textStyle</td></tr>
+      <tr><td>AppCompatEditText</td><td>androidx.appcompat.widget.AppCompatEditText</td><td>hint / inputType / singleLine / imeOptions</td></tr>
+      <tr><td>AppCompatButton</td><td>androidx.appcompat.widget.AppCompatButton</td><td>text / enabled；事件用 onClick</td></tr>
+      <tr><td>AppCompatImageView</td><td>androidx.appcompat.widget.AppCompatImageView</td><td>src（Glide 加载）/ scaleType</td></tr>
+      <tr><td>AppCompatCheckBox</td><td>androidx.appcompat.widget.AppCompatCheckBox</td><td>checked + CompoundButton 监听</td></tr>
+      <tr><td>RadioGroup + AppCompatRadioButton</td><td>android.widget.RadioGroup 等</td><td>单选组；选中事件 setOnCheckedChangeListener</td></tr>
+      <tr><td>AppCompatSpinner</td><td>androidx.appcompat.widget.AppCompatSpinner</td><td>items 喂 Lua 数组，自动建适配器</td></tr>
+      <tr><td>ProgressBar / SeekBar</td><td>android.widget.*</td><td>progress / max；监听写法见下方示例</td></tr>
+      <tr><td>WebView / LuaWebView</td><td>android.webkit.WebView / com.androlua.LuaWebView</td><td>url 属性直接加载；LuaWebView 支持 Lua 回调风格</td></tr>
+    </table>
+
+    <h3>通用属性</h3>
+    <table>
+      <tr><th>属性</th><th>取值</th></tr>
+      <tr><td><code>layout_width / layout_height</code></td><td>-1（match_parent）、-2（wrap_content）、"100dp"</td></tr>
+      <tr><td><code>layout_gravity / gravity</code></td><td>"left|center" 组合</td></tr>
+      <tr><td><code>layout_margin* / padding*</code></td><td>"8dp" 或数字（px）</td></tr>
+      <tr><td><code>background</code></td><td>"#RRGGBB"、"?attr/名"、图片路径（.9.png 走点九图）</td></tr>
+      <tr><td><code>src</code></td><td>图片路径 / URL / 相对路径（基于 getLuaDir()，Glide 加载）</td></tr>
+      <tr><td><code>onClick / onLongClick</code></td><td>函数或全局函数名字符串</td></tr>
+      <tr><td><code>items</code></td><td>ListView / Spinner 数据（Lua 数组，自动建 ArrayListAdapter）</td></tr>
+      <tr><td><code>pages</code></td><td>ViewPager 翻页：数组每项一个布局表（自动建 LuaPagerAdapter）</td></tr>
+      <tr><td><code>visibility</code></td><td>0 可见 / 4 不可见 / 8 占位隐藏</td></tr>
+    </table>
+
+    <h3>读写与事件</h3>
+<pre><code><span class="cmt">-- 读值：Java 对象先 toString()，或直接用返回值</span>
+<span class="kw">local</span> name = input.getText().toString()
+<span class="kw">local</span> on = switchAutoSave.isChecked()
+
+<span class="cmt">-- 事件：布局属性 onXxx 之外，用 createProxy 绑接口</span>
+seekBar.setOnSeekBarChangeListener(luajava.createProxy(
+  <span class="str">"android.widget.SeekBar$OnSeekBarChangeListener"</span>, {
+    onProgressChanged = <span class="kw">function</span>(bar, progress, fromUser)
+      MyToast.short(<span class="str">"进度 "</span> .. progress)
+    <span class="kw">end</span>,
+    onStartTrackingTouch = <span class="kw">function</span>(bar) <span class="kw">end</span>,
+    onStopTrackingTouch = <span class="kw">function</span>(bar) <span class="kw">end</span>,
+  }))</code></pre>
+    <div class="note">尺寸单位：无后缀数字按 px 处理，建议统一用 "dp/sp" 字符串；
+    文本统一 UTF-8。列表类控件（ListView / RecyclerView）优先使用
+    <a href="#br-list">LuaRecyclerAdapter</a>。</div>
+  </section>
+
+  <section id="ui-material">
+    <h2>Material You 控件</h2>
+    <p>BriarLua 内置 <strong>Material 1.14</strong>（Material 3 / Material You），提供 7 套主题色
+    （蓝 / 绿 / 紫 / 粉红 / 红 / 橙 / 青）与动态取色，深浅色自动适配。所有 Material 控件
+    bindClass 后即可放进布局表，属性写法与普通控件一致。</p>
+
+    <h3>主题色：MyColor</h3>
+    <p>全局 <code>MyColor</code>（<code>utils.Color</code>）按当前主题实时解析 Material 颜色，
+    切换主题、深浅色、动态取色后自动跟随。常用色名（与 Material 3 规范一致）：</p>
+    <table>
+      <tr><th>色名</th><th>用途</th></tr>
+      <tr><td><code>colorPrimary / colorOnPrimary</code></td><td>主色 / 主色上的内容色</td></tr>
+      <tr><td><code>colorPrimaryContainer / colorOnPrimaryContainer</code></td><td>主色容器（卡片、选中态底）及容器上内容色</td></tr>
+      <tr><td><code>colorOnBackground / colorBackground</code></td><td>页面背景及正文内容色</td></tr>
+      <tr><td><code>colorSurface / colorOnSurface / colorOnSurfaceVariant</code></td><td>表面层（工具栏、对话框）及表面内容色</td></tr>
+      <tr><td><code>colorSurfaceVariant / colorSurfaceContainer(High)</code></td><td>次级表面（列表底、胶囊底）</td></tr>
+      <tr><td><code>colorOutline / colorOutlineVariant</code></td><td>描边 / 分隔线</td></tr>
+      <tr><td><code>colorError</code></td><td>错误、删除态</td></tr>
+    </table>
+<pre><code><span class="cmt">-- 布局属性里直接引用（IDE 设置页的真实写法）</span>
+{
+  MaterialCardView, id = <span class="str">"card"</span>,
+  strokeWidth = <span class="num">0</span>,
+  strokeColor = MyColor.colorOutlineVariant,
+  cardBackgroundColor = MyColor.colorSurfaceContainer,
+}
+<span class="cmt">-- 代码中同样可用；alpha 通道用 MyUI.setColorAlpha(color, 20) 调整</span>
+myTitle.setTextColor(MyColor.colorOnBackground)</code></pre>
+    <div class="note">色名未命中时返回按 state_enabled 解析的兜底值，不会抛错；
+    全部 Material 属性名可在 API 阅览器检索 <code>com.google.android.material.R</code>。</div>
+
+    <h3>MaterialButton 按钮</h3>
+<pre><code><span class="kw">local</span> MDC_R = bindClass <span class="str">"com.google.android.material.R"</span>
+<span class="kw">local</span> MaterialButton = bindClass <span class="str">"com.google.android.material.button.MaterialButton"</span>
+
+{
+  MaterialButton, id = <span class="str">"btnOk"</span>,
+  text = <span class="str">"确定"</span>,
+  enabled = <span class="kw">true</span>,
+  <span class="cmt">-- 描边样式（IDE 欢迎页的真实写法）：</span>
+  style = MDC_R.attr.materialButtonOutlinedStyle,
+}</code></pre>
+    <p>常用属性：<code>text / enabled / icon</code>（Drawable 资源）、
+    <code>cornerRadius</code>（"18dp"）。代码里 <code>btnOk.isEnabled()</code> 读状态，
+    <code>btnOk.setEnabled(false)</code> 置灰。</p>
+
+    <h3>MaterialCardView 卡片</h3>
+<pre><code><span class="kw">local</span> MaterialCardView = bindClass <span class="str">"com.google.android.material.card.MaterialCardView"</span>
+
+{
+  MaterialCardView, id = <span class="str">"card"</span>,
+  layout_width = -<span class="num">1</span>, layout_height = <span class="str">"wrap_content"</span>,
+  layout_margin = <span class="str">"8dp"</span>,
+  checkable = <span class="kw">true</span>,       <span class="cmt">-- 可选中卡片（IDE 权限页写法）</span>
+  strokeWidth = <span class="num">0</span>,
+  strokeColor = MyColor.colorOutlineVariant,
+  cardBackgroundColor = MyColor.colorSurfaceContainer,
+  { <span class="cmt">-- 子控件照常嵌套</span>
+    AppCompatTextView, id = <span class="str">"title"</span>, padding = <span class="str">"16dp"</span>,
+  },
+}
+card.setOnCheckedChangeListener(<span class="cmt">-- checkable 卡片的选中回调</span>
+  luajava.createProxy(<span class="str">"android.widget.CompoundButton$OnCheckedChangeListener"</span>, {
+    onCheckedChanged = <span class="kw">function</span>(v, checked) <span class="kw">end</span>,
+  }))</code></pre>
+
+    <h3>TextInputLayout 输入框</h3>
+<pre><code><span class="kw">local</span> TextInputLayout = bindClass <span class="str">"com.google.android.material.textfield.TextInputLayout"</span>
+<span class="kw">local</span> TextInputEditText = bindClass <span class="str">"com.google.android.material.textfield.TextInputEditText"</span>
+
+{
+  TextInputLayout, id = <span class="str">"inputLayout"</span>,
+  layout_width = -<span class="num">1</span>, layout_height = <span class="str">"wrap_content"</span>,
+  layout_margin = <span class="str">"8dp"</span>,
+  hint = <span class="str">"搜索类名"</span>,               <span class="cmt">-- 悬浮标签</span>
+  { <span class="cmt">-- 编辑控件作为子项嵌入</span>
+    TextInputEditText, id = <span class="str">"input"</span>,
+    layout_width = -<span class="num">1</span>,
+    inputType = <span class="str">"text"</span>,
+    singleLine = <span class="kw">true</span>,
+  },
+}
+inputLayout.setError(<span class="str">"名称不能为空"</span>)   <span class="cmt">-- 行内错误提示，置 nil 清除</span></code></pre>
+
+    <h3>Chip / ChipGroup 标签</h3>
+<pre><code><span class="kw">local</span> Chip = bindClass <span class="str">"com.google.android.material.chip.Chip"</span>
+<span class="kw">local</span> ChipGroup = bindClass <span class="str">"com.google.android.material.chip.ChipGroup"</span>
+
+{
+  ChipGroup, id = <span class="str">"tags"</span>,
+  layout_width = -<span class="num">1</span>, layout_height = <span class="str">"wrap_content"</span>,
+  singleSelection = <span class="kw">true</span>,           <span class="cmt">-- 单选组</span>
+  chipSpacingHorizontal = <span class="str">"8dp"</span>,
+  {
+    Chip, text = <span class="str">"全部"</span>, checkable = <span class="kw">true</span>, checked = <span class="kw">true</span>,
+  },
+  {
+    Chip, text = <span class="str">"BriarLua"</span>, checkable = <span class="kw">true</span>,
+  },
+}</code></pre>
+
+    <h3>MaterialSwitch 开关</h3>
+<pre><code><span class="kw">local</span> MaterialSwitch = bindClass <span class="str">"com.google.android.material.materialswitch.MaterialSwitch"</span>
+
+{
+  MaterialSwitch, id = <span class="str">"switchAutoSave"</span>,
+  checked = <span class="kw">false</span>,
+}
+switchAutoSave.setOnCheckedChangeListener(
+  luajava.createProxy(<span class="str">"android.widget.CompoundButton$OnCheckedChangeListener"</span>, {
+    onCheckedChanged = <span class="kw">function</span>(v, checked)
+      MyToast.short(checked <span class="kw">and</span> <span class="str">"已开启自动保存"</span> <span class="kw">or</span> <span class="str">"已关闭"</span>)
+    <span class="kw">end</span>,
+  }))</code></pre>
+
+    <h3>Slider 滑杆</h3>
+<pre><code><span class="kw">local</span> Slider = bindClass <span class="str">"com.google.android.material.slider.Slider"</span>
+
+{
+  Slider, id = <span class="str">"fontSize"</span>,
+  valueFrom = <span class="num">12</span>, valueTo = <span class="num">28</span>, stepSize = <span class="num">1</span>,
+}
+fontSize.addOnChangeListener(
+  luajava.createProxy(<span class="str">"com.google.android.material.slider.Slider$OnChangeListener"</span>, {
+    onValueChange = <span class="kw">function</span>(slider, value, fromUser)
+      myTitle.setTextSize(value)
+    <span class="kw">end</span>,
+  }))</code></pre>
+
+    <h3>FloatingActionButton 浮动按钮</h3>
+<pre><code><span class="kw">local</span> FloatingActionButton = bindClass <span class="str">"com.google.android.material.floatingactionbutton.FloatingActionButton"</span>
+<span class="kw">local</span> ExtendedFloatingActionButton = bindClass <span class="str">"com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton"</span>
+
+{ <span class="cmt">-- 普通样式（IDE 主页写法）</span>
+  FloatingActionButton, id = <span class="str">"fab"</span>,
+  src = <span class="str">"@drawable/ic_add"</span>,
+  layout_gravity = <span class="str">"bottom|right"</span>,
+  layout_margin = <span class="str">"16dp"</span>,
+}
+{ <span class="cmt">-- 扩展样式：带文字</span>
+  ExtendedFloatingActionButton, id = <span class="str">"fabExt"</span>,
+  text = <span class="str">"新建"</span>, icon = <span class="str">"@drawable/ic_add"</span>,
+}</code></pre>
+
+    <h3>MaterialToolbar 工具栏</h3>
+<pre><code><span class="kw">local</span> MaterialToolbar = bindClass <span class="str">"com.google.android.material.appbar.MaterialToolbar"</span>
+
+{
+  MaterialToolbar, id = <span class="str">"toolbar"</span>,
+  layout_width = -<span class="num">1</span>, layout_height = <span class="str">"wrap_content"</span>,
+  title = <span class="str">"我的应用"</span>,
+  subtitle = <span class="str">"v1.0"</span>,
+}
+activity.setSupportActionBar(toolbar)   <span class="cmt">-- 接入系统菜单/返回键</span></code></pre>
+
+    <h3>MaterialAlertDialogBuilder 对话框</h3>
+<pre><code><span class="kw">local</span> Builder = bindClass <span class="str">"com.google.android.material.dialog.MaterialAlertDialogBuilder"</span>
+<span class="kw">local</span> onClick = luajava.createProxy(<span class="str">"android.content.DialogInterface$OnClickListener"</span>, {
+  onClick = <span class="kw">function</span>(d, which)
+    <span class="cmt">-- which: -1 确定 / -2 取消 / 列表项下标</span>
+  <span class="kw">end</span>,
+})
+
+Builder(activity)
+  .setTitle(<span class="str">"确认删除"</span>)
+  .setMessage(<span class="str">"此操作不可撤销"</span>)
+  .setPositiveButton(<span class="str">"删除"</span>, onClick)
+  .setNegativeButton(<span class="str">"取消"</span>, <span class="kw">nil</span>)
+  .setItems({ <span class="str">"选项一"</span>, <span class="str">"选项二"</span> }, onClick)  <span class="cmt">-- 或列表/单选</span>
+  .show()</code></pre>
+
+    <h3>BottomSheetDialog 底部弹层</h3>
+<pre><code><span class="kw">local</span> BottomSheetDialog = bindClass <span class="str">"com.google.android.material.bottomsheet.BottomSheetDialog"</span>
+
+<span class="kw">local</span> dialog = BottomSheetDialog(activity)
+dialog.setContentView(loadlayout({
+  MaterialTextView, text = <span class="str">"从底部弹出"</span>, padding = <span class="str">"24dp"</span>,
+}))
+dialog.show()
+
+<span class="cmt">-- 模块封装（自带背景模糊动画，Android 12+）：</span>
+<span class="kw">local</span> MyBottomSheetDialog = require <span class="str">"dialogs.MyBottomSheetDialog"</span>
+<span class="kw">local</span> sheet = MyBottomSheetDialog(activity)
+sheet.setBlurRadius(<span class="num">20</span>)      <span class="cmt">-- 背景模糊半径</span>
+sheet.setBlurView(activity.getWindow().getDecorView())
+sheet.show()</code></pre>
+
+    <h3>BriarLua 特有组件（lemon-material-ui）</h3>
+    <p>BriarLua 自带 <code>lemon.material.*</code> 组件库（API 阅览器 BriarLua 分类可检索），
+    IDE 自身界面即由它们构建：</p>
+    <table>
+      <tr><th>组件</th><th>说明</th></tr>
+      <tr><td><code>lemon.material.switches.MaterialSwitchBar</code></td><td>设置行开关：一行文字 + 开关（<code>text / checked</code> 属性，<code>setOnCheckedChangeListener</code> 回调），IDE 信息页写法</td></tr>
+      <tr><td><code>lemon.material.switches.MaterialSwitch</code></td><td>纯开关，等同 MaterialSwitch</td></tr>
+      <tr><td><code>lemon.material.textfield.MaterialTextField</code></td><td>带浮动标签的输入框容器</td></tr>
+      <tr><td><code>lemon.material.button.MaterialHeroButton(Group)</code></td><td>大号主操作按钮（组）</td></tr>
+      <tr><td><code>lemon.material.card.MaterialCardView</code></td><td>卡片（默认带前景涟漪）</td></tr>
+      <tr><td><code>lemon.material.divider.MaterialDivider</code></td><td>分隔线（<code>dividerColor / inset</code>）</td></tr>
+      <tr><td><code>lemon.material.swiperefreshlayout.SwipeRefreshLayout</code></td><td>下拉刷新容器（子项为列表时触发 <code>onRefresh</code>）</td></tr>
+    </table>
+    <div class="note">上述 Material 类均已在 PublicClasses 注册，可直接 bindClass；
+    完整属性以 API 阅览器为准。BriarLua 的 7 套主题与动态取色对所有 Material 控件统一生效。</div>
+  </section>
+
+  <section id="ui-editor">
+    <h2>编辑器与选择菜单</h2>
+    <p><code>com.androlua.LuaEditor</code> 是 BriarLua 重写的代码编辑器控件：语法高亮、
+    撤销重做、选区手柄、浮动选择菜单、搜索与自动补全一体化，可直接放进布局表。
+    IDE 内置的编辑器页（<code>page/editor</code>）就是它的综合范例。</p>
+
+    <h3>创建编辑器</h3>
+<pre><code><span class="kw">local</span> LuaEditor = bindClass <span class="str">"com.androlua.LuaEditor"</span>
+
+activity.setContentView(loadlayout({
+  LuaEditor,
+  id = <span class="str">"editor"</span>,
+  layout_width = -<span class="num">1</span>,
+  layout_height = -<span class="num">1</span>,
+}))
+
+editor.setText(<span class="str">"print('hello')"</span>)
+<span class="cmt">-- 取全文（DocumentProvider → String）</span>
+<span class="kw">local</span> src = editor.getText().toString()
+
+<span class="cmt">-- 直接读写文件</span>
+editor.open(<span class="str">"/sdcard/BriarLua/project/demo/main.lua"</span>)
+editor.save()          <span class="cmt">-- 保存回原路径</span></code></pre>
+
+    <h3>常用方法速查</h3>
+    <table>
+      <tr><th>方法</th><th>说明</th></tr>
+      <tr><td><code>setText(s) / getText().toString()</code></td><td>设置 / 获取全文</td></tr>
+      <tr><td><code>getSelectedText()</code></td><td>取当前选中内容（String）</td></tr>
+      <tr><td><code>setSelection(begin, n) / selectText(bool)</code></td><td>程序化选区 / 进入或退出选区模式</td></tr>
+      <tr><td><code>undo() / redo()</code></td><td>撤销 / 重做</td></tr>
+      <tr><td><code>open(path) / save([path])</code></td><td>打开 / 保存文件</td></tr>
+      <tr><td><code>gotoLine(line) / getCaretLine()</code></td><td>跳行 / 当前光标行</td></tr>
+      <tr><td><code>setWordWrap(bool)</code></td><td>自动换行开关</td></tr>
+      <tr><td><code>findNext(keyword)</code></td><td>查找下一个并选中</td></tr>
+      <tr><td><code>searchCodeNext/Prev/Count(keyword)</code></td><td>代码搜索（命中静默选中，不弹菜单）</td></tr>
+      <tr><td><code>startCodeSearch/stopCodeSearch/openCodeSearch</code></td><td>搜索栏生命周期控制</td></tr>
+      <tr><td><code>setDark(bool)</code> / <code>set*Color(color)</code></td><td>深色高亮配色 / 各语法元素颜色</td></tr>
+    </table>
+
+    <h3>选择菜单（选区浮动菜单）</h3>
+    <p>长按或双击拖选进入选区模式后，浮动菜单自动出现，提供
+    <strong>全选 / 剪切 / 复制 / 粘贴 / 搜索 / 关闭</strong> 六个操作；点击空白处或按返回键退出选区。</p>
+    <ul>
+      <li><strong>位置规则</strong>：优先悬于选区上方；上方空间不足时翻转到选区下方，
+      并整体下移让出<strong>选区手柄</strong>（拖动块）的下垂区域——菜单顶部不低于
+      手柄底部 + 4dp，保证两个手柄始终可见、可抓取（v1.0.6 修复：此前菜单会整段盖住手柄）；</li>
+      <li><strong>跟随</strong>：拖动手柄调整选区、滚动编辑器时菜单逐帧跟随；选区滚出可视区自动隐藏，滚回后恢复；</li>
+      <li><strong>搜索</strong>：点“搜索”以当前选中内容为关键词，预填进搜索栏并立即搜索
+      （由 <code>setCodeSearchLauncher</code> 接入 Lua 搜索栏）；</li>
+      <li><strong>静默选区</strong>：搜索命中的程序化选区不弹菜单（避免遮挡代码）；用户手动长按 / 双击拖选时恢复显示。</li>
+    </ul>
+<pre><code><span class="cmt">-- 选区变化监听（active=是否处于选区模式）</span>
+editor.setLuaSelectionListener(luajava.createProxy(
+  <span class="str">"com.androlua.LuaEditor$SelectionListener"</span>, {
+    onSelectionChanged = <span class="kw">function</span>(active, selStart, selEnd)
+      <span class="kw">if</span> active <span class="kw">then</span>
+        MyToast.short(<span class="str">"选中 "</span> .. (selEnd - selStart) .. <span class="str">" 个字符"</span>)
+      <span class="kw">end</span>
+    <span class="kw">end</span>,
+  }))
+
+<span class="cmt">-- “搜索”按钮接入自定义搜索栏（不设则回退内置 ActionMode）</span>
+editor.setCodeSearchLauncher(luajava.createProxy(
+  <span class="str">"com.androlua.LuaEditor$SearchLauncher"</span>, {
+    onOpenSearchBar = <span class="kw">function</span>()
+      <span class="cmt">-- 此处打开你的搜索 UI，并用 getSelectedText() 预填</span>
+    <span class="kw">end</span>,
+  }))
+
+<span class="cmt">-- 完全抑制浮动菜单（如全屏预览场景）；传 false 恢复</span>
+editor.setSelectionMenuSuppressed(<span class="kw">true</span>)</code></pre>
+    <div class="note">菜单按钮的点击目标由系统手势接管，条目宽度超屏时自动横向滚动；
+    主题色（背景 / 图标 / 分隔线）随 7 套主题与动态取色自动适配，深浅色同步。</div>
+
+    <h3>自动补全</h3>
+<pre><code><span class="cmt">-- 补全候选：按包注入类名（代码补全 + 高亮识别同步生效）</span>
+editor.addPackage(<span class="str">"com.briarlua"</span>, {
+  <span class="str">"LuaRecyclerAdapter"</span>, <span class="str">"PhotoView"</span>,
+})
+
+<span class="cmt">-- 追加任意候选词（如项目内全局函数名）</span>
+editor.addNames({ <span class="str">"myFunctionA"</span>, <span class="str">"myFunctionB"</span> })
+
+<span class="cmt">-- 补全面板配色</span>
+editor.setKeywordColor(<span class="num">0xFF2196F3</span>)</code></pre>
+    <div class="note">编辑器页顶部的<strong>符号栏</strong>与<strong>搜索栏</strong>属于页面级组件
+    （<code>layout.editor</code> / <code>layout.editor_search</code>），不在 LuaEditor 控件内部；
+    自建编辑器页时可按 IDE 源码的方式组合。</div>
+  </section>
+
+  <section id="br-list">
+    <h2>列表适配器（LuaRecyclerAdapter）</h2>
+    <p>BriarLua 内置 <code>com.briarlua.LuaRecyclerAdapter</code>：高性能 RecyclerView 列表适配器，
+    布局表 + 数据表即可用，数据行与布局 id 同名即自动绑定，
+    自带视图复用、细粒度增删动画与线程安全保障：</p>
+<pre><code><span class="kw">local</span> bindClass = luajava.bindClass
+<span class="kw">local</span> LuaRecyclerAdapter = bindClass <span class="str">"com.briarlua.LuaRecyclerAdapter"</span>
+<span class="kw">local</span> RecyclerView = bindClass <span class="str">"androidx.recyclerview.widget.RecyclerView"</span>
+<span class="kw">local</span> StaggeredGridLayoutManager = bindClass <span class="str">"androidx.recyclerview.widget.StaggeredGridLayoutManager"</span>
+
+<span class="cmt">-- 页面：一个 RecyclerView</span>
+activity.setContentView(loadlayout({
+  RecyclerView, id = <span class="str">"list"</span>, layout_width = -<span class="num">1</span>, layout_height = -<span class="num">1</span>,
+}))
+
+<span class="cmt">-- 条目布局：id 与数据行字段同名即自动绑定</span>
+<span class="kw">local</span> item = {
+  LinearLayoutCompat, layout_width = -<span class="num">1</span>, layout_height = -<span class="num">2</span>,
+  {
+    MaterialCardView, id = <span class="str">"card"</span>, layout_width = -<span class="num">1</span>, layout_height = -<span class="num">2</span>,
+    {
+      AppCompatTextView, id = <span class="str">"title"</span>, textSize = <span class="str">"14sp"</span>, padding = <span class="str">"16dp"</span>,
+    },
+  },
+}
+
+<span class="kw">local</span> data = {}  <span class="cmt">-- 数据表（保持引用，add/remove 会同步进去）</span>
+list.layoutManager = StaggeredGridLayoutManager(<span class="num">2</span>, StaggeredGridLayoutManager.VERTICAL)
+list.adapter = LuaRecyclerAdapter(activity, data, item)
+
+<span class="cmt">-- 点击：clickViewId 指定接收点击的子控件（不设则整行）</span>
+list.adapter.clickViewId = <span class="str">"card"</span>
+list.adapter.onItemClick = <span class="kw">function</span>(adapter, itemView, view, pos)
+  <span class="kw">local</span> row = adapter.getData()[pos + <span class="num">1</span>]  <span class="cmt">-- pos 为 0 基</span>
+  MyToast.short(<span class="str">"点击了："</span> .. row.title)
+<span class="kw">end</span>
+list.adapter.onItemLongClick = <span class="kw">function</span>(adapter, itemView, view, pos)
+  adapter.remove(pos)  <span class="cmt">-- 长按删除（带删除动画）</span>
+  <span class="kw">return true</span>
+<span class="kw">end</span>
+
+<span class="cmt">-- 增删改查</span>
+list.adapter.add({ title = <span class="str">"第一行"</span> })
+list.adapter.addAll({ { title = <span class="str">"第二行"</span> }, { title = <span class="str">"第三行"</span> } })
+list.adapter.insert(<span class="num">0</span>, { title = <span class="str">"插入到顶部"</span> })
+list.adapter.update(<span class="num">0</span>, { title = <span class="str">"改写第一行"</span> })
+<span class="cmt">-- list.adapter.remove(0) / list.adapter.clear()</span>
+
+<span class="cmt">-- 图片列：布局里加 AppCompatImageView id="img"，行数据直接给
+<span class="cmt">-- 路径/URL/资源id，Glide 自动加载（重绑自动取消过期请求）</span>
+<span class="cmt">-- 图片列：布局里加 AppCompatImageView id="img"，行数据直接给</span>
+<span class="cmt">-- 路径/URL/资源id，Glide 自动加载（重绑自动取消过期请求）</span>
+list.adapter.add({ title = <span class="str">"带图"</span>, img = <span class="str">"https://example.com/a.png"</span> })
+
+<span class="cmt">-- 带请求头的网络图（v1.0.7）：防盗链图床直接可用</span>
+list.adapter.add({
+  title = <span class="str">"需要 Referer 的图"</span>,
+  img = <span class="str">"https://img.example.com/pic.jpg"</span>,
+  header = { Referer = <span class="str">"https://www.example.com/"</span> },
+})
+
+<span class="cmt">-- Fusion 风格补绑：viewHolder.tag.image 取控件（v1.0.7 兼容写法）</span>
+list.adapter.setAdapterInterface(LuaRecyclerAdapter.AdapterInterface{
+  onBindViewHolder = <span class="kw">function</span>(viewHolder, index)
+    <span class="kw">local</span> itemData = list.adapter.getData()[index + <span class="num">1</span>]
+    <span class="kw">local</span> imageView = viewHolder.tag.image
+  <span class="kw">end</span>,
+})</code></pre>
+    <p>更多能力：</p>
+    <ul>
+      <li><code>adapter.filter("关键字")</code> + <code>adapter.filter = function(base, out, prefix) end</code>
+      Lua 过滤（向 out 逐个 <code>out[#out+1] = row</code> 保留行），<code>adapter.clearFilter()</code> 恢复全量；</li>
+      <li><code>adapter.defaultData = { title = "默认文案", img = "默认图" }</code> 默认值表（原 setStyle，v1.0.5 更名）：行数据缺字段时兜底，先应用默认值再用行数据覆盖；</li>
+      <li><code>adapter.animation = function() return ... end</code> 条目进入动画工厂（返回 Animation；原 setAnimationUtil，v1.0.5 移除了冗余方法名）；</li>
+      <li><code>adapter.adapterInterface = function(holder, pos) end</code> 绑定后回调（holder.itemView 取条目根视图，holder.views / holder.tag 均为 id → 控件表，tag 为 Fusion 兼容名：v1.0.7 起 <code>viewHolder.tag.image</code> 可直接取控件）；</li>
+      <li><code>adapter.notifyOnChange = false</code> 暂停自动刷新（批量操作后 <code>adapter.changeData()</code> 一次刷新）；</li>
+      <li>行数据直接改 <code>adapter.getData()</code> 后调 <code>adapter.changeData()</code> 全量刷新；
+      add/remove 等方法在后台线程调用也安全（自动归一到主线程）。</li>
+    </ul>
+    <div class="note">行字段值为表时按“属性表”处理：
+    <code>{ img = { src = "a.png", scaleType = "centerCrop" } }</code> 会对该控件逐项设置属性；
+    布局参数非法时构造即抛出明确错误；条目布局运行期创建失败时空白 View 兜底并在错误日志上报一次；
+    页面销毁时可调用 <code>adapter.release()</code> 立即释放数据与视图引用（不调用亦可，GC 兜底）。</div>
+  </section>
+
+  <section id="br-classes">
+    <h2>BriarLua 内置扩展类</h2>
+    <p>BriarLua 在兼容层（<code>com.androlua.*</code>）之外自带一批 <code>com.briarlua.*</code>
+    扩展类，可在 API 阅览器的 <strong>BriarLua</strong> 分类中直接检索（v1.0.5 新增该 Tab）。
+    常用类用法如下。</p>
+
+    <h3>com.briarlua.LuaRecyclerAdapter —— 列表适配器</h3>
+    <p>完整教程见上文<a href="#br-list">列表适配器</a>。v1.0.5 API 调整后的速记：</p>
+<pre><code><span class="kw">local</span> LuaRecyclerAdapter = bindClass <span class="str">"com.briarlua.LuaRecyclerAdapter"</span>
+list.adapter = LuaRecyclerAdapter(activity, data, item) <span class="cmt">-- 必须主线程构造</span>
+list.adapter.clickViewId = <span class="str">"card"</span>     <span class="cmt">-- 点击目标子控件</span>
+list.adapter.defaultData = { title = <span class="str">"加载中…"</span> } <span class="cmt">-- 默认值表（原 setStyle）</span>
+list.adapter.animation = makeAnim <span class="cmt">-- 条目动画（原 setAnimationUtil）</span>
+list.adapter.setImageHeaders({ Referer = <span class="str">"https://host/"</span> }) <span class="cmt">-- 图片默认请求头（v1.0.7）</span>
+list.adapter.release() <span class="cmt">-- 页面销毁时释放引用</span></code></pre>
+
+    <h3>com.briarlua.views.PhotoView —— 图片缩放视图</h3>
+    <p>继承 ImageView，支持双指缩放、单击/双击回位与双指旋转，可直接放进布局表：</p>
+<pre><code><span class="kw">local</span> PhotoView = bindClass <span class="str">"com.briarlua.views.PhotoView"</span>
+activity.setContentView(loadlayout({
+  PhotoView, id = <span class="str">"photo"</span>, layout_width = -<span class="num">1</span>, layout_height = -<span class="num">1</span>,
+}))
+
+photo.setImageBitmap(loadbitmap(<span class="str">"/sdcard/a.jpg"</span>))
+photo.setMaxScale(<span class="num">4</span>)       <span class="cmt">-- 最大缩放倍数</span>
+photo.setAnimaDuring(<span class="num">340</span>)   <span class="cmt">-- 回位动画时长(ms)</span>
+photo.enable()              <span class="cmt">-- 开启缩放手势（默认关闭）</span>
+photo.enableRotate()        <span class="cmt">-- 开启双指旋转</span></code></pre>
+    <div class="note">仅作普通 ImageView 使用时无须 <code>enable()</code>；<code>disenable()</code>/<code>disableRotate()</code> 可随时关闭对应手势。</div>
+
+    <h3>com.briarlua.utils.AsyncFile / AsyncShell —— 后台 IO</h3>
+    <p>文件与 shell 操作均在后台线程执行，完成后回主线程回调，不卡界面：</p>
+<pre><code><span class="kw">local</span> AsyncFile = bindClass <span class="str">"com.briarlua.utils.AsyncFile"</span>
+<span class="kw">local</span> AsyncShell = bindClass <span class="str">"com.briarlua.utils.AsyncShell"</span>
+
+<span class="cmt">-- 读文件：回调(content, err)，默认 4MB 上限，超过按错误处理</span>
+AsyncFile.read(<span class="str">"/sdcard/notes.txt"</span>, <span class="kw">function</span>(content, err)
+  <span class="kw">if</span> err <span class="kw">then</span> print(<span class="str">"读失败: "</span> .. err) <span class="kw">else</span> print(content) <span class="kw">end</span>
+<span class="kw">end</span>)
+AsyncFile.read(path, <span class="num">1024</span> * <span class="num">512</span>, callback) <span class="cmt">-- 自定义上限的重载</span>
+
+<span class="cmt">-- 执行 shell（sh -c）；回调参数为输出全文，失败为空串</span>
+AsyncShell.exec(<span class="str">"ls -l /sdcard"</span>, <span class="kw">function</span>(output)
+  print(output)
+<span class="kw">end</span>)
+AsyncShell.exec(<span class="str">"mkdir -p /sdcard/tmp"</span>) <span class="cmt">-- 无回调，即发即忘</span></code></pre>
+
+    <h3>com.briarlua.utils.JsonUtil —— JSON 解析</h3>
+    <p>Gson 后端，返回 Java Map / List，用方法访问：</p>
+<pre><code><span class="kw">local</span> JsonUtil = bindClass <span class="str">"com.briarlua.utils.JsonUtil"</span>
+<span class="kw">local</span> obj = JsonUtil.parseObject(<span class="str">'{"name":"BriarLua","ver":5}'</span>)
+print(obj.get(<span class="str">"name"</span>))  <span class="cmt">-- BriarLua（数字会解析为 double）</span>
+
+<span class="kw">local</span> arr = JsonUtil.parseArray(<span class="str">'[{"a":1},{"a":2}]'</span>)
+print(arr.size())          <span class="cmt">-- 2</span>
+print(arr.get(<span class="num">0</span>).get(<span class="str">"a"</span>)) <span class="cmt">-- 1.0（List 下标从 0 起）</span></code></pre>
+
+    <h3>com.briarlua.utils.UiUtil —— 界面测量工具</h3>
+<pre><code><span class="kw">local</span> UiUtil = bindClass <span class="str">"com.briarlua.utils.UiUtil"</span>
+<span class="kw">local</span> h = UiUtil.getStatusBarHeight(activity) <span class="cmt">-- 状态栏高度(px)</span>
+<span class="kw">local</span> a = UiUtil.getActionBarSize(activity)  <span class="cmt">-- 标题栏高度(px)</span>
+<span class="kw">local</span> night = UiUtil.isNightMode(activity)   <span class="cmt">-- 是否深色模式</span>
+<span class="cmt">-- 键盘弹出时把 target 内容顶到输入法上方（other 可传 nil 同步避让另一视图）</span>
+UiUtil.keepAboveKeyboard(mainContainer, sidePanel)</code></pre>
+
+        <h3>com.briarlua.utils.CacheCleaner —— 缓存清理（v1.0.7）</h3>
+    <p>统计与清空应用可再生缓存（内部/外部 cacheDir 与 dexfiles 代理 dex；
+    Glide 磁盘缓存位于 cacheDir 内，配合 utils.Glide 的 clearAll 一并清理）。
+    不触碰工程、设置与运行数据，清除后不影响软件正常运行：</p>
+<pre><code><span class="kw">local</span> CacheCleaner = bindClass <span class="str">"com.briarlua.utils.CacheCleaner"</span>
+
+<span class="kw">local</span> bytes = CacheCleaner.size(activity)     <span class="cmt">-- 可清理缓存总字节数</span>
+<span class="kw">local</span> freed = CacheCleaner.clearAll(activity) <span class="cmt">-- 清空并返回删除字节数（建议后台线程调用）</span></code></pre>
+    <div class="note">设置页「软件 → 清除缓存」即基于此类实现；文件遍历/删除建议在
+    Thread 中调用，Glide 内存缓存（clearMemory）须主线程、磁盘缓存
+    （clearDiskCache）须后台线程，用法见 utils.Glide 的 clearAll()。</div>
+
+<h3>com.briarlua.dialogs.LuaMaterialDialog —— 质感对话框</h3>
+    <p>Material3 风格。新项目推荐直接使用标准的 MaterialAlertDialogBuilder；
+    LuaMaterialDialog 仅作为旧 LuaDialog 的直接替代品保留：</p>
+<pre><code><span class="kw">local</span> Builder = bindClass <span class="str">"com.google.android.material.dialog.MaterialAlertDialogBuilder"</span>
+<span class="kw">local</span> onClick = luajava.createProxy(<span class="str">"android.content.DialogInterface$OnClickListener"</span>, {
+  onClick = <span class="kw">function</span>(d, which) MyToast.short(<span class="str">"已删除"</span>) <span class="kw">end</span>,
+})
+
+<span class="kw">local</span> b = Builder(activity)
+b.setTitle(<span class="str">"确认删除"</span>)
+b.setMessage(<span class="str">"此操作不可撤销"</span>)
+b.setPositiveButton(<span class="str">"删除"</span>, onClick)
+b.setNegativeButton(<span class="str">"取消"</span>, <span class="kw">nil</span>)
+b.show()</code></pre>
+    <div class="note">CoordinatorLayout 用的三个行为类（<code>com.briarlua.behavior.*</code>）
+    供应用内部布局使用，普通项目直接用布局模块 <code>loadlayout("layout.xxx")</code> 即可，无须直接实例化。</div>
+  </section>
+
+  <section id="br-canvas">
+    <h2>Canvas 绘图</h2>
+    <p>绘图走标准 Android Canvas API，配合 BriarLua 内置的 <code>com.androlua.LuaDrawable</code> 可以把 Lua 函数变成 Drawable：</p>
+<pre><code><span class="kw">local</span> bindClass = luajava.bindClass
+<span class="kw">local</span> LuaDrawable = bindClass <span class="str">"com.androlua.LuaDrawable"</span>
+<span class="kw">local</span> Color = bindClass <span class="str">"android.graphics.Color"</span>
+<span class="kw">local</span> PorterDuff = bindClass <span class="str">"android.graphics.PorterDuff"</span>
+
+<span class="kw">local</span> drawable = LuaDrawable(<span class="kw">function</span>(canvas, paint)
+  <span class="cmt">-- paint 由 LuaDrawable 提供；canvas 为 android.graphics.Canvas</span>
+  paint.setColor(Color.rgb(<span class="num">37</span>, <span class="num">99</span>, <span class="num">235</span>))
+  paint.setAntiAlias(<span class="kw">true</span>)
+  canvas.drawCircle(<span class="num">200</span>, <span class="num">200</span>, <span class="num">120</span>, paint)
+
+  paint.setColor(Color.WHITE)
+  paint.setTextSize(<span class="num">48</span>)
+  canvas.drawText(<span class="str">"BriarLua"</span>, <span class="num">120</span>, <span class="num">220</span>, paint)
+<span class="kw">end</span>)
+
+<span class="cmt">-- 设为任意 View 的背景即可显示</span>
+myTitle.setBackgroundDrawable(drawable)</code></pre>
+    <p>图片位图操作用 <code>loadbitmap(path)</code>（支持本地路径 / 网络地址）加载，配合 Canvas.drawBitmap、Matrix 变换。更多绘图类：Path、RectF、LinearGradient、BitmapShader 等均可直接 bindClass 使用。</p>
+    <div class="note">若需每帧重绘（动画），在 LuaDrawable 回调里保存返回函数并配合 <code>timer</code> 定时 <code>view.invalidate()</code>；或改用 SurfaceView（API 阅览器搜索 SurfaceView）。</div>
+  </section>
+
+  <section id="br-net">
+    <h2>网络请求</h2>
+    <p>两种方式，按需选用：</p>
+    <h3>方式一：OkHttp 模块（推荐，HTTPS 友好）</h3>
+<pre><code><span class="kw">local</span> OkHttp = require <span class="str">"utils.OkHttp"</span>
+
+<span class="cmt">-- GET：showDialog 传 true 会显示进度对话框</span>
+OkHttp.<span class="fn">get</span>(<span class="kw">true</span>, <span class="str">"https://httpbin.org/get"</span>, {
+  [<span class="str">"User-Agent"</span>] = <span class="str">"BriarLua/1.8"</span>,
+}, <span class="kw">true</span>, <span class="kw">function</span>(code, content, ms)
+  <span class="cmt">-- 回调已在主线程：code 状态码（-1 为失败），content 响应体，ms 耗时</span>
+  <span class="kw">if</span> code == <span class="num">200</span> <span class="kw">then</span>
+    MyToast.short(<span class="str">"请求成功 ("</span> .. ms .. <span class="str">"ms)"</span>)
+   <span class="kw">else</span>
+    MyToast.short(<span class="str">"请求失败: "</span> .. tostring(content))
+  <span class="kw">end</span>
+<span class="kw">end</span>)
+
+<span class="cmt">-- POST 表单 / JSON</span>
+OkHttp.<span class="fn">post</span>(<span class="kw">false</span>, <span class="str">"https://httpbin.org/post"</span>, {
+  username = <span class="str">"GinHalion"</span>,
+}, <span class="kw">nil</span>, <span class="kw">function</span>(code, content) <span class="fn">print</span>(content) <span class="kw">end</span>)
+
+<span class="cmt">-- 文件上传：data 为字段表，file 为 { 字段名 = 文件路径 }</span>
+<span class="cmt">-- OkHttp.upload(true, url, data, file, header, callback)</span>
+OkHttp.<span class="fn">cancelAllRequests</span>()   <span class="cmt">-- 页面销毁时取消全部请求</span></code></pre>
+    <h3>方式二：LuaSocket（http 模块）</h3>
+<pre><code><span class="kw">local</span> http = require <span class="str">"http"</span>
+<span class="kw">local</span> ltn12 = require <span class="str">"ltn12"</span>
+
+<span class="kw">local</span> resp = {}
+<span class="kw">local</span> ok, code, headers = http.<span class="fn">request</span>{
+  url = <span class="str">"http://httpbin.org/get"</span>,
+  sink = ltn12.sink.table(resp),
+}
+<span class="fn">print</span>(table.<span class="fn">concat</span>(resp))   <span class="cmt">-- 响应体</span></code></pre>
+    <div class="note warn">LuaSocket 是同步阻塞的，务必放在 <code>task</code>/<code>thread</code> 中执行；OkHttp 模块本身就是异步回调。另外应用需要声明 INTERNET 权限（BriarLua 已内置，打包时自动合并）。</div>
+  </section>
+
+  <section id="br-event">
+    <h2>事件与回调</h2>
+    <p>在处理 Java 接口回调（如点击、触摸、动画等）时，必须使用 <code>luajava.createProxy</code> 绑定：</p>
+<pre><code><span class="kw">local</span> btn = myButton
+btn.setOnClickListener(luajava.createProxy(
+  <span class="str">"android.view.View$OnClickListener"</span>, {
+    onClick = <span class="kw">function</span>(v)
+      MyToast.short(<span class="str">"点击成功"</span>)
+    <span class="kw">end</span>
+  }))</code></pre>
+    <p>部分框架组件也提供简化写法（loadlayout 属性 / LuaWebView 风格的 <code>onKeyDown</code> 全局函数）。同一接口的多个方法在表里并列即可，缺省方法回调返回 nil 等价 false：</p>
+<pre><code>myDrawerLayout.addDrawerListener(luajava.createProxy(
+  <span class="str">"androidx.drawerlayout.widget.DrawerLayout$DrawerListener"</span>, {
+    onDrawerSlide = <span class="kw">function</span>(v, offset) <span class="kw">end</span>,
+    onDrawerOpened = <span class="kw">function</span>(v) MyToast.short(<span class="str">"侧栏已打开"</span>) <span class="kw">end</span>,
+    onDrawerClosed = <span class="kw">function</span>(v) <span class="kw">end</span>,
+    onDrawerStateChanged = <span class="kw">function</span>(state) <span class="kw">end</span>,
+  }))</code></pre>
+    <div class="note">回调在主线程触发，可以做 UI 操作；但不要在里面做耗时操作。页面销毁后晚到的回调可能因 LuaState 已关闭而报错——用 pcall 包裹最安全（框架源码统一这样做）。</div>
+  </section>
+
+  <section id="br-thread">
+    <h2>线程与异步</h2>
+    <p>三种异步工具，全部由框架提供，无需手写 Handler：</p>
+    <h3>task —— 后台执行，回主线程拿结果</h3>
+<pre><code><span class="cmt">-- task(耗时函数, ..., 完成回调)：回调参数即函数返回值</span>
+<span class="fn">task</span>(<span class="kw">function</span>(path)
+  <span class="cmt">-- 在线程池执行（可执行网络 / 大文件 / 重计算）</span>
+  <span class="kw">local</span> ok, err = pcall(<span class="kw">function</span>()
+    <span class="kw">return</span> require(<span class="str">"utils.Project"</span>).readFile(path)
+  <span class="kw">end</span>)
+  <span class="kw">return</span> ok, err
+<span class="kw">end</span>, <span class="str">"/sdcard/BriarLua/project/demo/main.lua"</span>, <span class="kw">function</span>(content, err)
+  <span class="cmt">-- 已切回主线程，可直接刷新 UI</span>
+  <span class="kw">if</span> content <span class="kw">then</span> myLuaEditor.setText(content) <span class="kw">end</span>
+<span class="kw">end</span>)</code></pre>
+    <h3>thread —— 独立 Lua 线程</h3>
+<pre><code><span class="cmt">-- 传入字符串路径或函数；新线程有独立 LuaState，不能直接碰 UI</span>
+<span class="fn">thread</span>(<span class="kw">function</span>()
+  <span class="kw">for</span> i = <span class="num">1</span>, <span class="num">5</span> <span class="kw">do</span>
+    <span class="fn">print</span>(<span class="str">"子线程计数 "</span> .. i)
+    Thread.sleep(<span class="num">1000</span>)
+  <span class="kw">end</span>
+<span class="kw">end</span>)</code></pre>
+    <h3>timer —— 定时 / 周期任务</h3>
+<pre><code><span class="cmt">-- timer(fn, 延迟ms, 周期ms)：周期 0 表示只执行一次</span>
+<span class="kw">local</span> t = <span class="fn">timer</span>(<span class="kw">function</span>()
+  MyToast.short(<span class="str">"每 2 秒触发一次"</span>)
+<span class="kw">end</span>, <span class="num">1000</span>, <span class="num">2000</span>)
+
+<span class="cmt">-- onDestroy 中 t.stop() 释放</span></code></pre>
+    <h3>原生写法（Java Handler，等价于以上）</h3>
+<pre><code><span class="kw">local</span> Handler = luajava.bindClass <span class="str">"android.os.Handler"</span>
+<span class="kw">local</span> Looper = luajava.bindClass <span class="str">"android.os.Looper"</span>
+<span class="kw">local</span> Thread = luajava.bindClass <span class="str">"java.lang.Thread"</span>
+<span class="kw">local</span> mainHandler = Handler(Looper.getMainLooper())
+
+Thread(luajava.createProxy(<span class="str">"java.lang.Runnable"</span>, {
+  run = <span class="kw">function</span>()
+    <span class="kw">local</span> result = <span class="str">"处理完成"</span>
+    mainHandler.post(luajava.createProxy(<span class="str">"java.lang.Runnable"</span>, {
+      run = <span class="kw">function</span>()
+        myTextView.setText(result)
+      <span class="kw">end</span>
+    }))
+  <span class="kw">end</span>
+})).start()</code></pre>
+  </section>
+
+  <section id="br-api">
+    <h2>核心 API</h2>
+    <p>页面脚本通过 <code>require "env"</code> 自动获得以下全局对象与函数（BriarLua 全部页面已内置）：</p>
+    <div class="api-list">
+      <div class="api-item">
+        <div class="sig"><span class="tag">全局</span> loadlayout(layout [, views])</div>
+        <p class="desc">加载布局表，返回 View 实例。views 传入空表可接收绑定的控件，避免全局污染。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig"><span class="tag">全局</span> loadbitmap(path) / loadmenu(name)</div>
+        <p class="desc">加载图片（本地 / 网络）为 Bitmap；按名字加载菜单布局。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig"><span class="tag">异步</span> task(fn, ..., callback) / thread(fn) / timer(fn, delay, period)</div>
+        <p class="desc">见<a href="#br-thread">线程与异步</a>。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig"><span class="tag">luajava</span> luajava.bindClass(className)</div>
+        <p class="desc">导入并绑定一个 Java 类。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig"><span class="tag">luajava</span> luajava.newInstance(className, ...)</div>
+        <p class="desc">构造 Java 对象：luajava.newInstance("java.io.File", "/sdcard/")。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig"><span class="tag">luajava</span> luajava.createProxy(interfaceName, table)</div>
+        <p class="desc">创建 Java 接口的代理对象。常用在各类 OnClickListener 中。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig"><span class="tag">luajava</span> luajava.astable(javaArray)</div>
+        <p class="desc">将 Java 数组 / List 转为 Lua Table，常用于遍历文件列表。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig"><span class="tag">工具</span> MyToast.short(text) / long / action(text, btn, fn)</div>
+        <p class="desc">Snackbar 提示（utils.Toast）。使用前先 MyToast.setActivity(activity)。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig"><span class="tag">工具</span> MyActivity.new(name [, data])</div>
+        <p class="desc">打开内置页面：home / setting / editor / build / info / log / doc / api / parsing / analysis / welcome。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig"><span class="tag">工具</span> MyColor.colorPrimary / colorOnSurface / ...</div>
+        <p class="desc">当前主题 Material 颜色（utils.Color），自动适配深浅色与动态取色。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig"><span class="tag">工具</span> MyUI.setTitle(t) / dp2px(dp) / sp2px(sp)</div>
+        <p class="desc">界面小工具（utils.UI）：标题、单位换算、状态栏处理。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig"><span class="tag">全局</span> copyText(content) / openUrl(url) / shareText(text)</div>
+        <p class="desc">剪贴板 / 打开浏览器 / 系统分享（mod.lua 内置）。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig"><span class="tag">全局</span> backImage(name) / backHtml(name)</div>
+        <p class="desc">取内置资源绝对路径：res/drawable/名.png、res/html/名.html。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig"><span class="tag">全局</span> dump(o) / each(javaIterable) / printstack()</div>
+        <p class="desc">调试打印：树形打印表 / 遍历 Java 集合 / 打印调用栈。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig"><span class="tag">全局</span> print(...)</div>
+        <p class="desc">输出到日志页；独立线程中自动回退为 sendMsg。</p>
+      </div>
+      <div class="api-item">
+        <div class="sig"><span class="tag">全局</span> activity / service</div>
+        <p class="desc">当前上下文。activity.getLuaDir([sub]) 取 Lua 资源目录；getSharedData/setSharedData 读写应用偏好。</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="br-project">
+    <h2>项目结构</h2>
+    <p>BriarLua 在外部存储的固定工作目录为 <code>/sdcard/BriarLua/</code>：</p>
+<pre><code>/sdcard/BriarLua/
+├── project/     <span class="cmt">-- 所有工程，一个文件夹一个工程</span>
+│   └── MyProject/
+│       ├── init.lua      <span class="cmt">(打包配置，必须存在)</span>
+│       ├── main.lua      <span class="cmt">(入口代码)</span>
+│       ├── icon.png      <span class="cmt">(应用图标，可选)</span>
+│       └── res/          <span class="cmt">(工程自用资源，可选)</span>
+├── backup/      <span class="cmt">-- 工程备份</span>
+├── history/     <span class="cmt">-- 文件历史（编辑器撤销 / 版本记录）</span>
+└── bin/         <span class="cmt">-- 打包产物 APK 输出目录</span></code></pre>
+    <p>这些路径也可在代码中获取：</p>
+<pre><code><span class="kw">local</span> ProjectUtil = require <span class="str">"utils.Project"</span>
+<span class="fn">print</span>(ProjectUtil.project_path)   <span class="cmt">-- /sdcard/BriarLua/project</span>
+<span class="fn">print</span>(ProjectUtil.bin_path)       <span class="cmt">-- /sdcard/BriarLua/bin</span>
+
+<span class="cmt">-- 常用方法</span>
+ProjectUtil.<span class="fn">readInit</span>(projectDir)     <span class="cmt">-- 解析 init.lua 为配置表</span>
+ProjectUtil.<span class="fn">listProjects</span>()           <span class="cmt">-- 列出全部工程</span>
+ProjectUtil.<span class="fn">writeFile</span>(path, content) <span class="cmt">-- UTF-8 写文件</span>
+ProjectUtil.<span class="fn">readFile</span>(path)            <span class="cmt">-- UTF-8 读文件</span></code></pre>
+  </section>
+
+  <section id="br-pack">
+    <h2>打包发布</h2>
+    <p>BriarLua 支持一键将工程打包为可安装的 APK 文件。</p>
+    <p>项目目录结构要求：</p>
+<pre><code>MyProject/
+├── init.lua      (打包配置)
+├── main.lua      (入口代码)
+├── icon.png      (应用图标)
+└── other.lua     (其他文件)</code></pre>
+    <p><code>init.lua</code> 完整字段（与框架解析一一对应）：</p>
+<pre><code>appname = <span class="str">"我的App"</span>          <span class="cmt">-- 应用名称（必须）</span>
+packagename = <span class="str">"com.example.myapp"</span> <span class="cmt">-- 包名（必须）</span>
+appver = <span class="str">"1.0"</span>               <span class="cmt">-- 版本名</span>
+appcode = <span class="str">"1"</span>                <span class="cmt">-- 版本号（整数递增）</span>
+minsdk = <span class="str">"23"</span>                <span class="cmt">-- 最低 Android 6.0</span>
+appsdk = <span class="str">"35"</span>                <span class="cmt">-- 目标 Android 15</span>
+debugmode = <span class="kw">false</span>            <span class="cmt">-- 打包时显示调试信息</span>
+user_permission = {            <span class="cmt">-- 追加权限，字符串数组</span>
+  <span class="str">"android.permission.CAMERA"</span>,
+}
+skip_compilation = {           <span class="cmt">-- 跳过 luac 编译的文件（保持源码分发）</span>
+  <span class="str">"script/dynamic.lua"</span>,
+}</code></pre>
+    <p>点击编辑器右上角的"打包"按钮，即可将工程编译生成 APK，产物存放在系统的 <code>BriarLua/bin/</code> 目录下。生成的 APK 已使用统一密钥签名（v1+v2+v3），可直接安装或分发。</p>
+  </section>
+
+  <footer>
+    <div>作者：GinHalion</div>
+    <div>BriarLua 基于 AndroLua+ 深度定制</div>
+    <div>开发文档 · v1.0.7</div>
+  </footer>
+
+</div>
+
+<script>
+  // 自动高亮侧边栏的当前章节
+  const links = document.querySelectorAll('.sidebar a[href^="#"]');
+  const sections = [];
+  links.forEach(a => {
+    const id = a.getAttribute('href').slice(1);
+    const el = document.getElementById(id);
+    if (el) sections.push({ el, a });
+  });
+
+  function update() {
+    let cur = sections[0];
+    for (const s of sections) {
+      if (s.el.getBoundingClientRect().top <= 100) cur = s;
+    }
+    links.forEach(a => a.classList.remove('active'));
+    if (cur) cur.a.classList.add('active');
+  }
+  window.addEventListener('scroll', update, { passive: true });
+  update();
+</script>
+
+</body>
+</html>
